@@ -99,10 +99,14 @@ Start the game from the repository root:
 .\.venv\Scripts\python.exe .\play_maia.py
 ```
 
+After you enter the Elo ratings and color, the script loads Maia before asking
+for your first move. Startup may take a little while.
+
 Enter your Maia Elo, your Elo, and the color you want to play. Enter moves in
 standard algebraic notation (such as `e4`) or UCI notation (such as `e2e4`).
 Type `undo` to take back a turn, or `q` to quit. The game is saved as a PGN
-file in the `games` folder when it ends or you quit.
+file in the `games` folder when it ends or you quit. A system notification
+sound plays after Maia makes a move on Windows.
 
 ## Models
 

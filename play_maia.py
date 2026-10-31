@@ -9,6 +9,11 @@ import chess
 import chess.engine
 import chess.pgn
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 
 MIN_THINK_SECONDS = 10.0
 MAX_THINK_SECONDS = 30.0
@@ -61,6 +66,13 @@ def save_pgn(pgn_text):
     return path
 
 
+def play_move_sound():
+    if winsound is not None:
+        winsound.MessageBeep()
+    else:
+        print("\a", end="", flush=True)
+
+
 def prompt_elo(label, default):
     while True:
         value = input(f"{label} Elo [{default}]: ").strip()
@@ -103,10 +115,14 @@ engine = chess.engine.SimpleEngine.popen_uci([
     "--seed", str(secrets.randbits(32)),
     "--local-files-only",
 ], cwd=Path(__file__).resolve().parent)
-engine.configure({"SelfElo": MAIA_ELO, "OppoElo": YOUR_ELO})
 final_result = None
 
 try:
+    print("\nLoading Maia model...", flush=True)
+    engine.configure({"SelfElo": MAIA_ELO, "OppoElo": YOUR_ELO})
+    engine.ping()
+    print("Maia is ready.", flush=True)
+
     while not board.is_game_over():
         print()
 
@@ -158,13 +174,13 @@ try:
             think_seconds = max(0.0, target_seconds - inference_seconds)
             total_seconds = inference_seconds + think_seconds
             print(
-                f"\nMaia is thinking ({total_seconds:.1f}s; "
-                f"uncertainty {uncertainty:.2f})...",
+                f"\nMaia is thinking (uncertainty {uncertainty:.2f})...",
                 flush=True,
             )
             time.sleep(think_seconds)
             move = result.move
             print("\nMaia plays:", board.san(move))
+            play_move_sound()
             board.push(move)
 
     print("\nFinal position:")

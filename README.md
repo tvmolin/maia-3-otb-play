@@ -104,9 +104,11 @@ for your first move. Startup may take a little while.
 
 Enter your Maia Elo, your Elo, and the color you want to play. Enter moves in
 standard algebraic notation (such as `e4`) or UCI notation (such as `e2e4`).
-Type `undo` to take back a turn, or `q` to quit. The game is saved as a PGN
-file in the `games` folder when it ends or you quit. A system notification
-sound plays after Maia makes a move on Windows.
+Type `help` at any prompt to see the available commands: `undo` takes back a
+turn, `resign` (or `concede`) resigns, and `q` (or `quit`/`exit`) quits. While
+Maia is thinking, `go` skips the remaining delay and makes her play immediately.
+The game is saved as a PGN file in the `games` folder when it ends or you quit.
+A system notification sound plays after Maia makes a move on Windows.
 
 ## Models
 

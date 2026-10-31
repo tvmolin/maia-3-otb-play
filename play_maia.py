@@ -1,5 +1,7 @@
 ﻿import math
+import os
 import secrets
+import select
 import sys
 import time
 from datetime import datetime
@@ -73,6 +75,75 @@ def play_move_sound():
         print("\a", end="", flush=True)
 
 
+def print_help():
+    print(
+        "\nCommands:\n"
+        "  help          Show this command list\n"
+        "  undo          Take back the last turn\n"
+        "  resign        Resign the game (alias: concede)\n"
+        "  q             Quit the game (aliases: quit, exit)\n"
+        "  go            Skip Maia's remaining think delay (during her turn)\n"
+        "\nYou can enter moves in SAN (e.g. e4) or UCI (e.g. e2e4) notation."
+    )
+
+
+def wait_for_go(seconds):
+    deadline = time.monotonic() + seconds
+    typed = []
+
+    if os.name == "nt":
+        import msvcrt
+
+        while time.monotonic() < deadline:
+            if not msvcrt.kbhit():
+                time.sleep(max(0.0, min(0.05, deadline - time.monotonic())))
+                continue
+
+            char = msvcrt.getwch()
+            if char in ("\x00", "\xe0"):
+                msvcrt.getwch()
+            elif char in ("\r", "\n"):
+                print()
+                command = "".join(typed).strip().lower()
+                typed.clear()
+                if command == "go":
+                    print("Skipping the remaining think time.", flush=True)
+                    return
+                if command == "help":
+                    print_help()
+                    continue
+                if command:
+                    print("Type 'help' to list commands.", flush=True)
+            elif char == "\b":
+                if typed:
+                    typed.pop()
+                    print("\b \b", end="", flush=True)
+            elif char.isprintable():
+                typed.append(char)
+                print(char, end="", flush=True)
+    else:
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            readable, _, _ = select.select(
+                [sys.stdin], [], [], max(0.0, min(0.05, remaining))
+            )
+            if not readable:
+                continue
+
+            command = sys.stdin.readline()
+            if not command:
+                time.sleep(max(0, deadline - time.monotonic()))
+                return
+            if command.strip().lower() == "go":
+                print("Skipping the remaining think time.", flush=True)
+                return
+            if command.strip().lower() == "help":
+                print_help()
+                continue
+            if command.strip():
+                print("Type 'help' to list commands.", flush=True)
+
+
 def prompt_elo(label, default):
     while True:
         value = input(f"{label} Elo [{default}]: ").strip()
@@ -129,8 +200,11 @@ try:
         if board.turn == PLAYER_COLOR:
             print("Moves:", format_move_list(board))
             text = input(
-                f"\nYour move (move {board.fullmove_number}): "
+                f"\nYour move (move {board.fullmove_number}; type help for commands): "
             ).strip()
+            if text.lower() == "help":
+                print_help()
+                continue
             if text.lower() in ("q", "quit", "exit"):
                 break
             if text.lower() == "undo":
@@ -172,12 +246,12 @@ try:
             max_think = OPENING_MAX_THINK_SECONDS if opening else MAX_THINK_SECONDS
             target_seconds = min_think + uncertainty * (max_think - min_think)
             think_seconds = max(0.0, target_seconds - inference_seconds)
-            total_seconds = inference_seconds + think_seconds
             print(
-                f"\nMaia is thinking (uncertainty {uncertainty:.2f})...",
+                f"\nMaia is thinking (uncertainty {uncertainty:.2f}); "
+                "type 'go' and press Enter to play now...",
                 flush=True,
             )
-            time.sleep(think_seconds)
+            wait_for_go(think_seconds)
             move = result.move
             print("\nMaia plays:", board.san(move))
             play_move_sound()

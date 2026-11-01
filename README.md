@@ -164,22 +164,20 @@ To remove the rule later, run this in an Administrator PowerShell:
 Remove-NetFirewallRule -DisplayName "Maia 3 local web app (TCP 5000)"
 ```
 
-Choose White or Black when starting. If you choose Black, Maia makes the
-opening move first. Enter moves in standard algebraic notation (such as `e4`)
-or UCI notation (such as `e2e4`). The web interface also accepts the terminal
-commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and `go`
-(during Maia's think delay). Maia uses the same uncertainty-based think time
-and shared game logic as the terminal version. The web game runs independently
-from any terminal game and saves its PGN when you stop the server with Ctrl+C.
+Choose White or Black and enter both Elo ratings when starting. Defaults match
+the terminal prompts (Maia 800, player 760). If you choose Black, Maia makes
+the opening move first. Enter moves in standard algebraic notation (such as
+`e4`) or UCI notation (such as `e2e4`). The web interface also accepts the
+terminal commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and
+`go` (during Maia's think delay). Help and Go controls remain available while
+Maia is thinking. Maia uses the same uncertainty-based think time and shared
+game logic as the terminal version. The web game runs independently from any
+terminal game and saves its PGN when you stop the server with Ctrl+C.
 Use **New Game** to save the current game's PGN and choose a side again without
 restarting the server or reloading the engine. Start a new game after Maia has
 finished her current turn (or use `go` to skip the remaining think delay).
 
-The HTTP API supports `POST /api/start` with `{"color":"white"}` or
-`{"color":"black"}`, `GET /api/history`, and `POST /api/command` with
-`{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. The
-`POST /api/move` route remains available and accepts either `{"move":"e4"}`
-or a command string.
+The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"player_elo":760}` (use `"black"` to play Black), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. `POST /api/new-game` saves the current PGN and returns to side/rating selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
 
 ## Models
 

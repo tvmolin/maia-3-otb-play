@@ -177,9 +177,7 @@ def main():
                 session.engine.quit()
             finally:
                 pgn_result = (
-                    final_result
-                    or session.final_result
-                    or (session.board.result() if session.is_game_over else "*")
+                    final_result or session.result
                 )
                 pgn_text = session.build_pgn(pgn_result)
                 pgn_path = save_pgn(pgn_text)

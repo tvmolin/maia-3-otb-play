@@ -13,6 +13,10 @@ class FakeEngine:
     def __init__(self, move="e5", error=None):
         self.move = move
         self.error = error
+        self.configured = []
+
+    def configure(self, options):
+        self.configured.append(options)
 
     def play(self, board, limit, info=None):
         if self.error:
@@ -98,6 +102,46 @@ class WebAppTests(unittest.TestCase):
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(game.board.turn, chess.BLACK)
 
+    def test_black_undo_replays_maias_opening_move(self):
+        client = create_app(FakeEngine(move="e4")).test_client()
+
+        with patch.object(GameSession, "wait_for_maia_think"):
+            client.post("/api/start", json={"color": "black"})
+            response = client.post("/api/command", json={"text": "undo"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["action"], "undo")
+        self.assertEqual(response.json["history"], [{"role": "Engine", "text": "e4"}])
+        game = client.application.config["CHESS_GAME"]
+        self.assertEqual(game.board.turn, chess.BLACK)
+
+    def test_web_can_set_elos_and_configure_engine(self):
+        engine = FakeEngine()
+        client = create_app(engine).test_client()
+
+        response = client.post(
+            "/api/start",
+            json={"color": "white", "maia_elo": 1500, "player_elo": 1300},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["maia_elo"], 1500)
+        self.assertEqual(response.json["player_elo"], 1300)
+        self.assertEqual(
+            engine.configured[-1], {"SelfElo": 1500, "OppoElo": 1300}
+        )
+
+    def test_invalid_elo_is_rejected(self):
+        client = create_app(FakeEngine()).test_client()
+
+        response = client.post(
+            "/api/start",
+            json={"color": "white", "maia_elo": 6000, "player_elo": 760},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(client.application.config["CHESS_GAME"].started)
+
     def test_shared_commands_work_over_http(self):
         help_response = self.app.post("/api/command", json={"text": "help"})
         self.assertEqual(help_response.json["action"], "help")
@@ -111,6 +155,16 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(undo_response.json["message"], "Undid 2 half-move(s).")
         self.assertEqual(undo_response.json["history"], [])
 
+    def test_help_command_is_available_while_maia_is_thinking(self):
+        game = self.app.application.config["CHESS_GAME"]
+        game.begin_maia_turn()
+
+        response = self.app.post("/api/command", json={"text": "help"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["action"], "help")
+        game.finish_maia_think()
+
     def test_resign_alias_and_quit_commands_work_over_http(self):
         resign_client = create_app(FakeEngine(move="e4")).test_client()
         with patch.object(GameSession, "wait_for_maia_think"):
@@ -120,6 +174,15 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["result"], "1-0")
         self.assertTrue(response.json["game_over"])
+        game = resign_client.application.config["CHESS_GAME"]
+        self.assertIn('[Result "1-0"]', game.build_pgn(game.result))
+
+        with patch("web_app.save_pgn") as save_pgn:
+            save_pgn.return_value.name = "resigned-game.pgn"
+            new_game_response = resign_client.post("/api/new-game")
+
+        self.assertEqual(new_game_response.status_code, 200)
+        self.assertIn('[Result "1-0"]', save_pgn.call_args.args[0])
 
         quit_response = self.app.post("/api/command", json={"text": "exit"})
         self.assertEqual(quit_response.json["action"], "quit")
@@ -208,6 +271,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'input.value = "";', page.data)
         self.assertIn(b'goButton.hidden = !waiting || gameEnded', page.data)
         self.assertIn(b'setWaitingForEngine(true);', page.data)
+        self.assertIn(b'id="help-button"', page.data)
+        self.assertIn(b'id="maia-elo"', page.data)
+        self.assertIn(b'id="player-elo"', page.data)
         self.assertEqual(history.json["history"], [])
 
 

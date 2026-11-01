@@ -121,6 +121,8 @@ class GameSession:
         self.player_elo = player_elo
         self.maia_elo = maia_elo
         self.maia_name = f"Maia {maia_elo}"
+        self._pending_maia_elo = maia_elo
+        self._pending_player_elo = player_elo
         self.history = []
         self.lock = RLock()
         self.started = started
@@ -135,6 +137,12 @@ class GameSession:
         return self.board.is_game_over() or self.final_result is not None
 
     @property
+    def result(self):
+        return self.final_result or (
+            self.board.result() if self.board.is_game_over() else "*"
+        )
+
+    @property
     def is_thinking(self):
         with self._think_state_lock:
             return self._maia_turn_active
@@ -143,7 +151,7 @@ class GameSession:
     def player_color_name(self):
         return "white" if self.player_color == chess.WHITE else "black"
 
-    def start(self, player_color):
+    def start(self, player_color, maia_elo=None, player_elo=None):
         with self.lock:
             if self.started:
                 if self.player_color == player_color:
@@ -151,9 +159,39 @@ class GameSession:
                 raise ValueError("This game has already started.")
             if player_color not in (chess.WHITE, chess.BLACK):
                 raise ValueError("Choose White or Black.")
+            maia_elo = self._pending_maia_elo if maia_elo is None else maia_elo
+            player_elo = self._pending_player_elo if player_elo is None else player_elo
+            self.validate_elos(maia_elo, player_elo)
+            if self.maia_elo != maia_elo or self.player_elo != player_elo:
+                self.engine.configure(
+                    {
+                        "SelfElo": maia_elo,
+                        "OppoElo": player_elo,
+                    }
+                )
+                self.maia_elo = maia_elo
+                self.player_elo = player_elo
+                self.maia_name = f"Maia {self.maia_elo}"
+            self._pending_maia_elo = maia_elo
+            self._pending_player_elo = player_elo
             self.player_color = player_color
             self.started = True
             return True
+
+    @staticmethod
+    def validate_elos(maia_elo, player_elo):
+        if (
+            isinstance(maia_elo, bool)
+            or not isinstance(maia_elo, int)
+            or not 0 <= maia_elo <= 5000
+        ):
+            raise ValueError("Maia Elo must be a whole number between 0 and 5000.")
+        if (
+            isinstance(player_elo, bool)
+            or not isinstance(player_elo, int)
+            or not 0 <= player_elo <= 5000
+        ):
+            raise ValueError("Your Elo must be a whole number between 0 and 5000.")
 
     def cancel_start(self):
         with self.lock:

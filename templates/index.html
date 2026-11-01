@@ -98,7 +98,8 @@
     }
 
     #setup {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
       align-items: center;
       gap: 10px;
       padding: 14px;
@@ -108,8 +109,9 @@
     form[hidden] { display: none; }
 
     #setup label { font-weight: 600; }
+    #setup button { grid-column: 1 / -1; min-height: 42px; }
 
-    select {
+    #setup select, #setup input {
       flex: 1;
       min-width: 0;
       padding: 11px;
@@ -118,6 +120,8 @@
       background: white;
       font: inherit;
     }
+
+    #setup input { font-size: 16px; }
 
     form {
       display: flex;
@@ -157,6 +161,14 @@
 
     #go-button[hidden] { display: none; }
 
+    #help-button {
+      margin: 0 0 14px 14px;
+      padding: 10px 16px;
+      background: #666;
+    }
+
+    #help-button[hidden] { display: none; }
+
     @media (max-width: 480px) {
       body { padding: 0; }
       main { min-height: 100vh; border: 0; border-radius: 0; }
@@ -178,6 +190,12 @@
         <option value="white">White</option>
         <option value="black">Black</option>
       </select>
+      <label for="maia-elo">Maia Elo</label>
+      <input id="maia-elo" name="maia_elo" type="number" min="0" max="5000"
+             step="1" value="800" required>
+      <label for="player-elo">Your Elo</label>
+      <input id="player-elo" name="player_elo" type="number" min="0" max="5000"
+             step="1" value="760" required>
       <button id="start-button" type="submit">Start game</button>
     </form>
     <section id="history" aria-live="polite" aria-label="Move history"></section>
@@ -188,6 +206,7 @@
              autocomplete="off" autocapitalize="off" required aria-label="Your move">
       <button id="send-button" type="submit">Send</button>
     </form>
+    <button id="help-button" type="button" hidden>Help</button>
     <button id="go-button" type="button" hidden>Go now</button>
   </main>
   <script>
@@ -195,10 +214,13 @@
     const newGameButton = document.querySelector("#new-game-button");
     const setup = document.querySelector("#setup");
     const colorSelect = document.querySelector("#player-color");
+    const maiaEloInput = document.querySelector("#maia-elo");
+    const playerEloInput = document.querySelector("#player-elo");
     const startButton = document.querySelector("#start-button");
     const form = document.querySelector("#move-form");
     const input = document.querySelector("#move-input");
     const button = document.querySelector("#send-button");
+    const helpButton = document.querySelector("#help-button");
     const goButton = document.querySelector("#go-button");
     const status = document.querySelector("#status");
     let waitingForEngine = false;
@@ -242,21 +264,29 @@
       button.disabled = waiting || gameEnded;
       goButton.hidden = !waiting || gameEnded;
       goButton.disabled = false;
+      helpButton.hidden = !waiting || gameEnded;
       newGameButton.disabled = waiting;
     }
 
     function renderState(data) {
       renderHistory(data.history || []);
+      if (Number.isInteger(data.maia_elo)) maiaEloInput.value = data.maia_elo;
+      if (Number.isInteger(data.player_elo)) playerEloInput.value = data.player_elo;
       if (data.started) {
         setup.hidden = true;
         form.hidden = false;
         newGameButton.hidden = false;
+        colorSelect.value = data.player_color;
+        maiaEloInput.value = data.maia_elo;
+        playerEloInput.value = data.player_elo;
       } else if (data.new_game) {
         setup.hidden = false;
         form.hidden = true;
         newGameButton.hidden = true;
         startButton.disabled = false;
         colorSelect.disabled = false;
+        maiaEloInput.disabled = false;
+        playerEloInput.disabled = false;
         input.value = "";
         status.textContent = data.saved_pgn
           ? `Previous game saved to ${data.saved_pgn}. Choose a color to start again.`
@@ -302,6 +332,8 @@
       event.preventDefault();
       startButton.disabled = true;
       colorSelect.disabled = true;
+      maiaEloInput.disabled = true;
+      playerEloInput.disabled = true;
       status.textContent = colorSelect.value === "black"
         ? "Maia is thinking; enter go to play now."
         : "";
@@ -313,7 +345,11 @@
         const response = await fetch("/api/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ color: colorSelect.value })
+          body: JSON.stringify({
+            color: colorSelect.value,
+            maia_elo: Number(maiaEloInput.value),
+            player_elo: Number(playerEloInput.value)
+          })
         });
         const data = await readResponse(response);
         renderState(data);
@@ -328,6 +364,8 @@
         form.hidden = true;
         startButton.disabled = false;
         colorSelect.disabled = false;
+        maiaEloInput.disabled = false;
+        playerEloInput.disabled = false;
       }
     });
 
@@ -385,6 +423,23 @@
       } catch (error) {
         status.textContent = error.message;
         goButton.disabled = false;
+      }
+    });
+
+    helpButton.addEventListener("click", async () => {
+      helpButton.disabled = true;
+      try {
+        const response = await fetch("/api/command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: "help" })
+        });
+        const data = await readResponse(response);
+        status.textContent = data.message;
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        helpButton.disabled = false;
       }
     });
 

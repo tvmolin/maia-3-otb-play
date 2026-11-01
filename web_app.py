@@ -26,11 +26,12 @@ def create_app(engine, board=None):
                 "history": list(game.history),
                 "started": game.started,
                 "player_color": game.player_color_name if game.started else None,
+                "maia_elo": game.maia_elo,
+                "player_elo": game.player_elo,
                 "maia_thinking": game.is_thinking,
                 "game_over": game.is_game_over,
                 "quit": game.quit_requested,
-                "result": game.final_result
-                or (game.board.result() if game.board.is_game_over() else None),
+                "result": game.result if game.is_game_over else None,
             }
         state.update(extra)
         return jsonify(state)
@@ -57,10 +58,23 @@ def create_app(engine, board=None):
             color = color.lower()
         if color not in ("white", "black"):
             return jsonify(error="Choose either white or black."), 400
+        maia_elo = payload.get("maia_elo") if isinstance(payload, dict) else None
+        player_elo = payload.get("player_elo") if isinstance(payload, dict) else None
+        if maia_elo is None:
+            maia_elo = game.maia_elo
+        if player_elo is None:
+            player_elo = game.player_elo
         try:
-            started_now = game.start(chess.WHITE if color == "white" else chess.BLACK)
+            started_now = game.start(
+                chess.WHITE if color == "white" else chess.BLACK,
+                maia_elo=maia_elo,
+                player_elo=player_elo,
+            )
         except ValueError as error:
             return jsonify(error=str(error)), 400
+        except Exception:
+            app.logger.exception("Failed to configure Maia for the new game.")
+            return jsonify(error="Could not configure the engine for this game."), 503
 
         messages = []
         if started_now and color == "black" and game.board.turn != game.player_color:
@@ -86,10 +100,7 @@ def create_app(engine, board=None):
                     )
                 saved_pgn = None
                 if game.started:
-                    result = game.final_result or (
-                        game.board.result() if game.board.is_game_over() else "*"
-                    )
-                    saved_pgn = save_pgn(game.build_pgn(result))
+                    saved_pgn = save_pgn(game.build_pgn(game.result))
                 game.reset()
         except ValueError as error:
             return jsonify(error=str(error)), 409
@@ -128,6 +139,16 @@ def create_app(engine, board=None):
                         jsonify(error="The engine failed to respond; check the server console."),
                         503,
                     )
+        elif command["action"] == "undo" and not game.is_game_over:
+            if game.board.turn != game.player_color:
+                try:
+                    messages.append({"role": "Engine", "text": play_maia_turn()})
+                except Exception:
+                    app.logger.exception("Maia failed to resume after undo.")
+                    return (
+                        jsonify(error="The engine failed to respond; check the server console."),
+                        503,
+                    )
         return game_state(
             action=command["action"],
             message=command["message"],
@@ -152,11 +173,11 @@ def main():
         finally:
             if app is not None:
                 game = app.config["CHESS_GAME"]
-                result = game.board.result() if game.is_game_over else "*"
-                pgn_text = game.build_pgn(result)
-                pgn_path = save_pgn(pgn_text)
-                print(f"\nSaved PGN to: {pgn_path}")
-                print("\nGame PGN:\n" + pgn_text)
+                if game.started:
+                    pgn_text = game.build_pgn(game.result)
+                    pgn_path = save_pgn(pgn_text)
+                    print(f"\nSaved PGN to: {pgn_path}")
+                    print("\nGame PGN:\n" + pgn_text)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,14 @@
 # Maia-3: human-like chess play and analysis engine
 
+> **Personal copy and license note:** This is a privately maintained copy of
+> the Maia-3 project from [CSSLab/maia3](https://github.com/CSSLab/maia3), not
+> the upstream project. The code is distributed under the GNU Affero General
+> Public License v3.0 (AGPL-3.0); see [LICENSE](LICENSE) and retain its notices.
+> Private use alone generally does not require publishing your changes, but
+> providing access to a modified version over a network can trigger AGPL source
+> availability requirements. Model weights and other assets may have separate
+> terms.
+
 ## [models](https://huggingface.co/collections/MaiaChess/maia3)/[code](https://github.com/CSSLab/maia-chess)/[paper](https://arxiv.org/abs/2605.19091)/[website](https://maiachess.com)
 
 [![Hugging Face](https://img.shields.io/badge/HuggingFace-Models-yellow?link=https://huggingface.co/collections/MaiaChess/maia3)](https://huggingface.co/collections/MaiaChess/maia3)

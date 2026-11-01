@@ -1,71 +1,22 @@
-﻿import math
 import os
-import secrets
 import select
 import sys
 import time
-from datetime import datetime
-from pathlib import Path
 
 import chess
-import chess.engine
-import chess.pgn
+
+from maia_game import (
+    HELP_TEXT,
+    GameSession,
+    create_engine,
+    format_move_list,
+    save_pgn,
+)
 
 try:
     import winsound
 except ImportError:
     winsound = None
-
-
-MIN_THINK_SECONDS = 10.0
-MAX_THINK_SECONDS = 30.0
-OPENING_FULL_MOVES = 5
-OPENING_MIN_THINK_SECONDS = 1.0
-OPENING_MAX_THINK_SECONDS = 5.0
-
-
-def format_move_list(board):
-    replay = board.root()
-    moves = []
-    for move in board.move_stack:
-        if replay.turn == chess.WHITE:
-            moves.append(f"{replay.fullmove_number}.")
-        moves.append(replay.san(move))
-        replay.push(move)
-    return " ".join(moves) if moves else "(no moves yet)"
-
-
-def undo_last_turn(board):
-    plies_to_undo = min(2, len(board.move_stack))
-    for _ in range(plies_to_undo):
-        board.pop()
-    return plies_to_undo
-
-
-def build_pgn(board, player_color, player_name, player_elo, maia_name, maia_elo, result):
-    game = chess.pgn.Game.from_board(board)
-    game.headers["Event"] = "OTB Maia game"
-    game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
-    game.headers["White"] = player_name if player_color == chess.WHITE else maia_name
-    game.headers["Black"] = maia_name if player_color == chess.WHITE else player_name
-    game.headers["WhiteElo"] = str(player_elo if player_color == chess.WHITE else maia_elo)
-    game.headers["BlackElo"] = str(maia_elo if player_color == chess.WHITE else player_elo)
-    game.headers["Result"] = result
-    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
-    return game.accept(exporter)
-
-
-def save_pgn(pgn_text):
-    games_dir = Path(__file__).resolve().parent / "games"
-    games_dir.mkdir(exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    path = games_dir / f"maia-game-{timestamp}.pgn"
-    suffix = 1
-    while path.exists():
-        path = games_dir / f"maia-game-{timestamp}-{suffix}.pgn"
-        suffix += 1
-    path.write_text(pgn_text + "\n", encoding="utf-8")
-    return path
 
 
 def play_move_sound():
@@ -76,18 +27,10 @@ def play_move_sound():
 
 
 def print_help():
-    print(
-        "\nCommands:\n"
-        "  help          Show this command list\n"
-        "  undo          Take back the last turn\n"
-        "  resign        Resign the game (alias: concede)\n"
-        "  q             Quit the game (aliases: quit, exit)\n"
-        "  go            Skip Maia's remaining think delay (during her turn)\n"
-        "\nYou can enter moves in SAN (e.g. e4) or UCI (e.g. e2e4) notation."
-    )
+    print("\n" + HELP_TEXT)
 
 
-def wait_for_go(seconds):
+def wait_for_go(seconds, session):
     deadline = time.monotonic() + seconds
     typed = []
 
@@ -107,7 +50,8 @@ def wait_for_go(seconds):
                 command = "".join(typed).strip().lower()
                 typed.clear()
                 if command == "go":
-                    print("Skipping the remaining think time.", flush=True)
+                    result = session.handle_player_command(command)
+                    print(result["message"], flush=True)
                     return
                 if command == "help":
                     print_help()
@@ -135,7 +79,8 @@ def wait_for_go(seconds):
                 time.sleep(max(0, deadline - time.monotonic()))
                 return
             if command.strip().lower() == "go":
-                print("Skipping the remaining think time.", flush=True)
+                result = session.handle_player_command("go")
+                print(result["message"], flush=True)
                 return
             if command.strip().lower() == "help":
                 print_help()
@@ -169,112 +114,78 @@ def prompt_color():
         print("Enter White or Black.")
 
 
-MAIA_ELO = prompt_elo("Maia", 800)
-YOUR_ELO = prompt_elo("Your", 760)
-PLAYER_COLOR = prompt_color()
-PLAYER_NAME = "Devonty"
-MAIA_NAME = f"Maia {MAIA_ELO}"
+def main():
+    maia_elo = prompt_elo("Maia", 800)
+    player_elo = prompt_elo("Your", 760)
+    player_color = prompt_color()
+    session = None
+    final_result = None
 
-board = chess.Board()
-engine = chess.engine.SimpleEngine.popen_uci([
-    sys.executable,
-    "-m", "maia3.uci",
-    "--model", "maia3-79m",
-    "--elo", str(MAIA_ELO),
-    "--temperature", "0.2",
-    "--top-p", "0.9",
-    "--use-uci-history",
-    "--seed", str(secrets.randbits(32)),
-    "--local-files-only",
-], cwd=Path(__file__).resolve().parent)
-final_result = None
-
-try:
-    print("\nLoading Maia model...", flush=True)
-    engine.configure({"SelfElo": MAIA_ELO, "OppoElo": YOUR_ELO})
-    engine.ping()
-    print("Maia is ready.", flush=True)
-
-    while not board.is_game_over():
-        print()
-
-        if board.turn == PLAYER_COLOR:
-            print("Moves:", format_move_list(board))
-            text = input(
-                f"\nYour move (move {board.fullmove_number}; type help for commands): "
-            ).strip()
-            if text.lower() == "help":
-                print_help()
-                continue
-            if text.lower() in ("q", "quit", "exit"):
-                break
-            if text.lower() == "undo":
-                plies_to_undo = undo_last_turn(board)
-                if plies_to_undo == 0:
-                    print("There are no moves to undo.")
-                    continue
-                print(f"Undid {plies_to_undo} half-move(s).")
-                continue
-            if text.lower() in ("resign", "concede"):
-                final_result = "0-1" if PLAYER_COLOR == chess.WHITE else "1-0"
-                print(f"\nYou resigned. Maia wins ({final_result}).")
-                break
-            try:
-                try:
-                    move = board.parse_san(text)
-                except ValueError:
-                    move = board.parse_uci(text)
-                board.push(move)
-            except ValueError:
-                print("I couldn't parse that as a legal move. Try again.")
-        else:
-            move_started = time.perf_counter()
-            result = engine.play(
-                board,
-                chess.engine.Limit(nodes=1),
-                info=chess.engine.INFO_ALL,
-            )
-            inference_seconds = time.perf_counter() - move_started
-            info = result.info.get("string", "").split()
-            if len(info) != 2 or info[0] != "policy_entropy":
-                raise RuntimeError("Maia did not report move-policy uncertainty.")
-            uncertainty = float(info[1])
-            if not math.isfinite(uncertainty):
-                raise RuntimeError(f"Invalid Maia policy uncertainty: {uncertainty}")
-            uncertainty = min(1.0, max(0.0, uncertainty))
-            opening = board.fullmove_number <= OPENING_FULL_MOVES
-            min_think = OPENING_MIN_THINK_SECONDS if opening else MIN_THINK_SECONDS
-            max_think = OPENING_MAX_THINK_SECONDS if opening else MAX_THINK_SECONDS
-            target_seconds = min_think + uncertainty * (max_think - min_think)
-            think_seconds = max(0.0, target_seconds - inference_seconds)
-            print(
-                f"\nMaia is thinking (uncertainty {uncertainty:.2f}); "
-                "type 'go' and press Enter to play now...",
-                flush=True,
-            )
-            wait_for_go(think_seconds)
-            move = result.move
-            print("\nMaia plays:", board.san(move))
-            play_move_sound()
-            board.push(move)
-
-    print("\nFinal position:")
-    if board.is_game_over():
-        final_result = board.result()
-        print("Game result:", final_result)
-finally:
     try:
-        engine.quit()
-    finally:
-        pgn_text = build_pgn(
-            board,
-            PLAYER_COLOR,
-            PLAYER_NAME,
-            YOUR_ELO,
-            MAIA_NAME,
-            MAIA_ELO,
-            final_result or (board.result() if board.is_game_over() else "*"),
+        print("\nLoading Maia model...", flush=True)
+        engine = create_engine(maia_elo, player_elo)
+        session = GameSession(
+            engine,
+            player_color=player_color,
+            player_name="Devonty",
+            player_elo=player_elo,
+            maia_elo=maia_elo,
         )
-        pgn_path = save_pgn(pgn_text)
-        print(f"\nSaved PGN to: {pgn_path}")
-        print("\nGame PGN:\n" + pgn_text)
+        print("Maia is ready.", flush=True)
+
+        while not session.is_game_over and not session.quit_requested:
+            print()
+
+            if session.board.turn == session.player_color:
+                print("Moves:", format_move_list(session.board))
+                text = input(
+                    f"\nYour move (move {session.board.fullmove_number}; "
+                    "type help for commands): "
+                ).strip()
+                try:
+                    command = session.handle_player_command(text)
+                except ValueError:
+                    print("I couldn't parse that as a legal move. Try again.")
+                    continue
+
+                if command["action"] == "help":
+                    print_help()
+                elif command["action"] == "undo":
+                    print(command["message"])
+                elif command["action"] == "resign":
+                    final_result = session.final_result
+                    print(f"\n{command['message']}")
+            else:
+                turn = session.choose_maia_move()
+                print(
+                    f"\nMaia is thinking (uncertainty {turn.uncertainty:.2f}); "
+                    "type 'go' and press Enter to play now...",
+                    flush=True,
+                )
+                wait_for_go(turn.think_seconds, session)
+                print("\nMaia plays:", session.play_maia_move(turn))
+                play_move_sound()
+
+        print("\nFinal position:")
+        if session.board.is_game_over():
+            final_result = session.board.result()
+        if final_result:
+            print("Game result:", final_result)
+    finally:
+        if session is not None:
+            try:
+                session.engine.quit()
+            finally:
+                pgn_result = (
+                    final_result
+                    or session.final_result
+                    or (session.board.result() if session.is_game_over else "*")
+                )
+                pgn_text = session.build_pgn(pgn_result)
+                pgn_path = save_pgn(pgn_text)
+                print(f"\nSaved PGN to: {pgn_path}")
+                print("\nGame PGN:\n" + pgn_text)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,5 @@
 huggingface-hub
+flask>=3.0,<4.0
 numpy
 python-chess
 torch

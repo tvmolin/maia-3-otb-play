@@ -119,6 +119,68 @@ Maia is thinking, `go` skips the remaining delay and makes her play immediately.
 The game is saved as a PGN file in the `games` folder when it ends or you quit.
 A system notification sound plays after Maia makes a move on Windows.
 
+## Play from a Phone on Local Wi-Fi
+
+The web interface runs as a separate application and leaves the terminal
+workflow intact. Both interfaces use the shared game logic in `maia_game.py`
+for engine setup, move validation, Maia's move selection and think-time, and
+PGN generation. Install the project dependencies, including Flask, if you have
+not already:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Start the web game from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe .\web_app.py
+```
+
+The server listens on port 5000 on all network interfaces. Find the PC's
+local IPv4 address with `ipconfig`, then open `http://<PC-IP>:5000` in a phone
+browser on the same Wi-Fi network. Wait until the server says it is starting
+before connecting; it loads Maia first.
+
+If Windows Firewall blocks the connection, open PowerShell as Administrator
+and add an inbound rule for port 5000 on private networks only. Restricting it
+to the local subnet allows devices on your Wi-Fi to connect without opening the
+port to the public internet:
+
+```powershell
+New-NetFirewallRule -DisplayName "Maia 3 local web app (TCP 5000)" `
+  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5000 `
+  -Profile Private -RemoteAddress LocalSubnet
+```
+
+Make sure the PC's Wi-Fi network is set to the **Private** network profile in
+Windows Settings under **Network & internet**. In `ipconfig`, use the IPv4
+address listed under the Wi-Fi adapter (not `127.0.0.1`) in the phone's browser.
+Both devices must be on the same non-guest Wi-Fi network; guest networks or
+router access-point isolation can prevent devices from reaching each other.
+To remove the rule later, run this in an Administrator PowerShell:
+
+```powershell
+Remove-NetFirewallRule -DisplayName "Maia 3 local web app (TCP 5000)"
+```
+
+Choose White or Black when starting. If you choose Black, Maia makes the
+opening move first. Enter moves in standard algebraic notation (such as `e4`)
+or UCI notation (such as `e2e4`). The web interface also accepts the terminal
+commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and `go`
+(during Maia's think delay). Maia uses the same uncertainty-based think time
+and shared game logic as the terminal version. The web game runs independently
+from any terminal game and saves its PGN when you stop the server with Ctrl+C.
+Use **New Game** to save the current game's PGN and choose a side again without
+restarting the server or reloading the engine. Start a new game after Maia has
+finished her current turn (or use `go` to skip the remaining think delay).
+
+The HTTP API supports `POST /api/start` with `{"color":"white"}` or
+`{"color":"black"}`, `GET /api/history`, and `POST /api/command` with
+`{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. The
+`POST /api/move` route remains available and accepts either `{"move":"e4"}`
+or a command string.
+
 ## Models
 
 The built-in aliases and preset commands apply the correct architecture settings

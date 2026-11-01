@@ -169,8 +169,8 @@ def prompt_color():
         print("Enter White or Black.")
 
 
-MAIA_ELO = prompt_elo("Maia", 600)
-YOUR_ELO = prompt_elo("Your", 700)
+MAIA_ELO = prompt_elo("Maia", 800)
+YOUR_ELO = prompt_elo("Your", 760)
 PLAYER_COLOR = prompt_color()
 PLAYER_NAME = "Devonty"
 MAIA_NAME = f"Maia {MAIA_ELO}"
@@ -181,7 +181,8 @@ engine = chess.engine.SimpleEngine.popen_uci([
     "-m", "maia3.uci",
     "--model", "maia3-79m",
     "--elo", str(MAIA_ELO),
-    "--temperature", "0.8",
+    "--temperature", "0.2",
+    "--top-p", "0.9",
     "--use-uci-history",
     "--seed", str(secrets.randbits(32)),
     "--local-files-only",

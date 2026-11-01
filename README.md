@@ -181,6 +181,75 @@ User-facing options:
 - `TopP`: nucleus sampling threshold. `1.0` disables top-p filtering.
 - `MultiPV`: number of likely human moves to show as UCI info lines.
 
+## Engine Command-Line Options
+
+The options below are passed when launching `maia3-uci` (or a model preset
+command). They are separate from the UCI options above, which a chess GUI can
+change after the engine starts. Defaults shown here are the parser defaults;
+selecting a built-in model with `--model` applies that model's architecture
+preset and may replace architecture and input defaults.
+
+Options with both hyphenated and underscored spellings accept either form.
+For example, `--cache-dir` and `--cache_dir` are equivalent. Boolean options
+listed with on/off forms accept `--no-...` variants as well.
+
+Use `-h` or `--help` to display the command-line help and exit.
+
+### Model and checkpoint
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--model` | none | Built-in model alias, Hugging Face repository ID, or Hugging Face URL. |
+| `--checkpoint`, `--checkpoint-path`, `--checkpoint_path` | none | Path to a local checkpoint. Combine with `--model` to use that model's architecture preset; omit `--model` for a custom architecture. |
+| `--checkpoint-filename`, `--checkpoint_filename` | automatic | Select a particular checkpoint file in a Hugging Face repository when it cannot be selected automatically. |
+| `--cache-dir`, `--cache_dir` | Hugging Face default | Directory for the Hugging Face download cache. |
+| `--revision` | repository default | Hugging Face branch, tag, or commit to use. |
+| `--local-files-only`, `--local_files_only` | off | Use only files already in the Hugging Face cache; do not download missing files. |
+| `--force-download`, `--force_download` | off | Force a fresh download of the checkpoint. |
+| `--hf-token`, `--hf_token` | none | Hugging Face access token, for example to access a private model repository. |
+| `--trust-checkpoint`, `--trust_checkpoint` | off | Allow unsafe pickle loading for a legacy checkpoint. Use only with a checkpoint you trust. |
+| `--list-models`, `--list_models` | off | Print the built-in model aliases and exit. |
+
+### Runtime and move selection
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--device` | `cuda` if available, otherwise `cpu` | Device on which to load and run the model. |
+| `--seed` | `42` | Seed the random-number generators used by inference. |
+| `--elo` | `1500` | Initial Elo for both players; the UCI `Elo`, `SelfElo`, and `OppoElo` options can change it. |
+| `--temperature` | `1.0` | Move-sampling temperature. `0` or less selects the highest-scoring legal move. |
+| `--top-p`, `--top_p` | `1.0` | Nucleus-sampling threshold; `1.0` disables top-p filtering. |
+| `--multipv`, `--multi-pv` | `5` | Number of candidate moves to report in UCI MultiPV info lines; values are limited to 1–20. |
+| `--use-uci-history`, `--use_uci_history` | off | Rebuild move history from moves in UCI `position` commands. When disabled, the current position is repeated to fill the model's history input. |
+
+### Input and architecture
+
+These settings describe the checkpoint's expected input and architecture.
+When using a custom checkpoint, set them to match that checkpoint.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--history` | `8` | Number of board positions in the model input history. |
+| `--use-padding`, `--use_padding` | off | Enable the checkpoint's configured input-padding behavior. Built-in presets enable it. |
+| `--include-time-info`, `--include_time_info` / `--no-include-time-info`, `--no-include_time_info` | off | Configure whether the model input includes time features. The UCI engine supplies zero-valued time data. |
+| `--dim-emb`, `--dim_emb` | `128` | Embedding dimension. |
+| `--dim-vit`, `--dim_vit` | `192` | Transformer/ViT hidden dimension. |
+| `--num-blocks`, `--num_blocks` | `8` | Number of transformer blocks. |
+| `--num-heads`, `--num_heads` | `6` | Number of attention heads. |
+| `--mlp-ratio`, `--mlp_ratio` | `2.0` | MLP size relative to the transformer dimension. |
+| `--dropout` | `0.0` | Dropout probability configured for the model. |
+| `--head-hid-dim`, `--head_hid_dim` | `192` | Hidden dimension of the prediction heads. |
+| `--use-gab`, `--use_gab` / `--no-use-gab`, `--no-use_gab` | on | Enable or disable the GAB attention component. |
+| `--gab-gen-size`, `--gab_gen_size` | `64` | GAB generator size. |
+| `--gab-per-square-dim`, `--gab_per_square_dim` | `0` | GAB feature dimension per board square. |
+| `--gab-intermediate-dim`, `--gab_intermediate_dim` | `64` | GAB intermediate dimension. |
+| `--use-rms-norm`, `--use_rms_norm` / `--no-use-rms-norm`, `--no-use_rms_norm` | on | Enable or disable RMS normalization. |
+| `--omit-qkv-biases`, `--omit_qkv_biases` / `--no-omit-qkv-biases`, `--no-omit_qkv_biases` | on | Omit or include query, key, and value projection biases. |
+| `--activation` | `gelu` | MLP activation function; accepted values are `gelu` and `relu`. |
+| `--use-relative-bias`, `--use_relative_bias` | off | Enable relative positional bias. |
+| `--use-absolute-pe`, `--use_absolute_pe` | off | Enable absolute positional encoding. |
+| `--use-amp`, `--use_amp` / `--no-use-amp`, `--no-use_amp` | on | Enable or disable automatic mixed precision. It is applied only when running on CUDA. |
+
 ## Use With Nibbler or Another Chess GUI
 
 Maia3 can be added to any GUI that supports UCI engines, including Nibbler.

@@ -50,6 +50,15 @@ def create_app(engine, board=None):
         with game.lock:
             return game_state()
 
+    @app.get("/api/pgn")
+    def get_pgn():
+        with game.lock:
+            if not game.started:
+                return jsonify(error="No game has been started."), 409
+            if not game.is_game_over:
+                return jsonify(error="PGN is available when the game ends."), 409
+            return jsonify(pgn=game.build_pgn(game.result))
+
     @app.post("/api/start")
     def start_game():
         payload = request.get_json(silent=True)

@@ -169,6 +169,24 @@
 
     #help-button[hidden] { display: none; }
 
+    #copy-pgn-button {
+      margin: 0 14px 14px 0;
+      padding: 10px 16px;
+      background: #287446;
+    }
+
+    #copy-pgn-button[hidden], #pgn-fallback[hidden] { display: none; }
+
+    #pgn-fallback {
+      width: calc(100% - 28px);
+      min-height: 120px;
+      margin: 0 14px 14px;
+      padding: 10px;
+      border: 1px solid #c9cbd1;
+      border-radius: 8px;
+      font: 13px ui-monospace, monospace;
+    }
+
     @media (max-width: 480px) {
       body { padding: 0; }
       main { min-height: 100vh; border: 0; border-radius: 0; }
@@ -208,6 +226,8 @@
     </form>
     <button id="help-button" type="button" hidden>Help</button>
     <button id="go-button" type="button" hidden>Go now</button>
+    <button id="copy-pgn-button" type="button" hidden>Copy PGN</button>
+    <textarea id="pgn-fallback" aria-label="PGN to copy" readonly hidden></textarea>
   </main>
   <script>
     const historyElement = document.querySelector("#history");
@@ -222,6 +242,8 @@
     const button = document.querySelector("#send-button");
     const helpButton = document.querySelector("#help-button");
     const goButton = document.querySelector("#go-button");
+    const copyPgnButton = document.querySelector("#copy-pgn-button");
+    const pgnFallback = document.querySelector("#pgn-fallback");
     const status = document.querySelector("#status");
     let waitingForEngine = false;
     let gameEnded = false;
@@ -294,6 +316,7 @@
       }
       gameEnded = Boolean(data.game_over || data.quit);
       if (gameEnded) setWaitingForEngine(false);
+      copyPgnButton.hidden = !data.game_over;
       if (data.game_over) {
         status.textContent = `Game over${data.result ? ` (${data.result})` : ""}.`;
       } else if (data.quit) {
@@ -440,6 +463,45 @@
         status.textContent = error.message;
       } finally {
         helpButton.disabled = false;
+      }
+    });
+
+    copyPgnButton.addEventListener("click", async () => {
+      copyPgnButton.disabled = true;
+      try {
+        const response = await fetch("/api/pgn");
+        const data = await readResponse(response);
+        let copied = false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          try {
+            await navigator.clipboard.writeText(data.pgn);
+            copied = true;
+          } catch (error) {
+            copied = false;
+          }
+        }
+
+        if (!copied) {
+          pgnFallback.value = data.pgn;
+          pgnFallback.hidden = false;
+          pgnFallback.focus();
+          pgnFallback.select();
+          if (document.execCommand) {
+            try {
+              copied = document.execCommand("copy");
+            } catch (error) {
+              copied = false;
+            }
+          }
+        }
+
+        status.textContent = copied
+          ? "PGN copied to clipboard."
+          : "Clipboard access is unavailable. The PGN is selected below; copy it manually.";
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        copyPgnButton.disabled = false;
       }
     });
 

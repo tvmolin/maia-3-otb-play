@@ -169,13 +169,19 @@ class WebAppTests(unittest.TestCase):
         resign_client = create_app(FakeEngine(move="e4")).test_client()
         with patch.object(GameSession, "wait_for_maia_think"):
             resign_client.post("/api/start", json={"color": "black"})
+        in_progress = resign_client.get("/api/pgn")
+        self.assertEqual(in_progress.status_code, 409)
+
         response = resign_client.post("/api/command", json={"text": "concede"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["result"], "1-0")
         self.assertTrue(response.json["game_over"])
         game = resign_client.application.config["CHESS_GAME"]
-        self.assertIn('[Result "1-0"]', game.build_pgn(game.result))
+        pgn_response = resign_client.get("/api/pgn")
+        self.assertEqual(pgn_response.status_code, 200)
+        self.assertIn('[Result "1-0"]', pgn_response.json["pgn"])
+        self.assertEqual(pgn_response.json["pgn"], game.build_pgn(game.result))
 
         with patch("web_app.save_pgn") as save_pgn:
             save_pgn.return_value.name = "resigned-game.pgn"
@@ -274,6 +280,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'id="help-button"', page.data)
         self.assertIn(b'id="maia-elo"', page.data)
         self.assertIn(b'id="player-elo"', page.data)
+        self.assertIn(b'id="copy-pgn-button"', page.data)
+        self.assertIn(b'id="pgn-fallback"', page.data)
         self.assertEqual(history.json["history"], [])
 
 

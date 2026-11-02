@@ -249,6 +249,13 @@
     let gameEnded = false;
     let canonicalHistory = [];
 
+    function scrollHistoryToBottom() {
+      requestAnimationFrame(() => {
+        historyElement.scrollTop = historyElement.scrollHeight;
+        historyElement.lastElementChild?.scrollIntoView({ block: "end" });
+      });
+    }
+
     function renderHistory(messages) {
       canonicalHistory = messages;
       historyElement.replaceChildren();
@@ -263,7 +270,7 @@
         bubble.append(role, text);
         historyElement.append(bubble);
       }
-      historyElement.scrollTop = historyElement.scrollHeight;
+      scrollHistoryToBottom();
     }
 
     function appendMessage(roleName, messageText) {
@@ -276,7 +283,7 @@
       text.textContent = messageText;
       bubble.append(role, text);
       historyElement.append(bubble);
-      historyElement.scrollTop = historyElement.scrollHeight;
+      scrollHistoryToBottom();
     }
 
     function setWaitingForEngine(waiting) {

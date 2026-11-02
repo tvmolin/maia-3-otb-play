@@ -315,6 +315,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'id="pgn-fallback"', page.data)
         self.assertIn(b'function focusMoveInput()', page.data)
         self.assertIn(b'input.focus({ preventScroll: true })', page.data)
+        self.assertIn(b'function scrollHistoryToBottom()', page.data)
+        self.assertIn(b'historyElement.lastElementChild?.scrollIntoView({ block: "end" })', page.data)
         self.assertIn(b'button.addEventListener("pointerdown"', page.data)
         self.assertIn(b'event.preventDefault();', page.data)
         self.assertIn(b'input.disabled = gameEnded', page.data)

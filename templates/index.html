@@ -219,7 +219,7 @@
     <section id="history" aria-live="polite" aria-label="Move history"></section>
     <div id="status" role="status"></div>
     <form id="move-form" hidden>
-      <input id="move-input" name="text" type="text"
+      <input id="move-input" name="text" type="text" enterkeyhint="send"
              placeholder="Move or command (e.g. e4, undo, go)"
              autocomplete="off" autocapitalize="off" required aria-label="Your move">
       <button id="send-button" type="submit">Send</button>
@@ -282,7 +282,7 @@
     function setWaitingForEngine(waiting) {
       waitingForEngine = waiting;
       historyElement.setAttribute("aria-busy", String(waiting));
-      input.disabled = waiting || gameEnded;
+      input.disabled = gameEnded;
       button.disabled = waiting || gameEnded;
       goButton.hidden = !waiting || gameEnded;
       goButton.disabled = false;
@@ -334,6 +334,17 @@
       return data;
     }
 
+    function focusMoveInput() {
+      if (form.hidden || input.disabled) return;
+      input.focus({ preventScroll: true });
+    }
+
+    button.addEventListener("pointerdown", (event) => {
+      if (button.disabled) return;
+      event.preventDefault();
+      focusMoveInput();
+    });
+
     newGameButton.addEventListener("click", async () => {
       newGameButton.disabled = true;
       try {
@@ -381,7 +392,11 @@
         if (data.messages && data.messages.length) {
           status.textContent = "";
         }
-        input.focus();
+        if (data.messages && data.messages.some((message) => message.role === "Engine")) {
+          focusMoveInput();
+        } else {
+          input.focus();
+        }
       } catch (error) {
         status.textContent = error.message;
         setup.hidden = false;
@@ -395,18 +410,19 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      if (waitingForEngine || gameEnded) return;
       const text = input.value.trim();
       if (!text) return;
 
       const isMove = !["help", "undo", "resign", "concede", "q", "quit", "exit", "go"]
         .includes(text.toLowerCase());
+      let engineMoveReceived = false;
       input.value = "";
       if (isMove) {
         appendMessage("You", text);
         setWaitingForEngine(true);
         status.textContent = "Maia is thinking. Select Go now to skip the delay.";
       } else {
-        input.disabled = true;
         button.disabled = true;
       }
       try {
@@ -416,6 +432,8 @@
           body: JSON.stringify({ text })
         });
         const data = await readResponse(response);
+        engineMoveReceived = data.messages
+          && data.messages.some((message) => message.role === "Engine");
         renderState(data);
         setWaitingForEngine(false);
         if (data.action === "help" || data.action === "undo" ||
@@ -436,7 +454,11 @@
         status.textContent = error.message;
         setWaitingForEngine(false);
       }
-      if (!input.disabled) input.focus();
+      if (engineMoveReceived) {
+        focusMoveInput();
+      } else if (!input.disabled) {
+        input.focus();
+      }
     });
 
     goButton.addEventListener("click", async () => {

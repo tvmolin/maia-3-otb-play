@@ -318,7 +318,8 @@
       if (gameEnded) setWaitingForEngine(false);
       copyPgnButton.hidden = !data.game_over;
       if (data.game_over) {
-        status.textContent = `Game over${data.result ? ` (${data.result})` : ""}.`;
+        status.textContent = `Game over${data.result ? ` (${data.result})` : ""}.`
+          + (data.saved_pgn ? ` PGN saved to ${data.saved_pgn}.` : "");
       } else if (data.quit) {
         status.textContent = "Game quit.";
       } else if (data.maia_thinking) {
@@ -426,6 +427,12 @@
         }
       } catch (error) {
         renderHistory(canonicalHistory);
+        try {
+          const response = await fetch("/api/history");
+          renderState(await readResponse(response));
+        } catch (historyError) {
+          status.textContent = historyError.message;
+        }
         status.textContent = error.message;
         setWaitingForEngine(false);
       }

@@ -172,11 +172,12 @@ terminal commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and
 `go` (during Maia's think delay). Help and Go controls remain available while
 Maia is thinking. Maia uses the same uncertainty-based think time and shared
 game logic as the terminal version. The web game runs independently from any
-terminal game and saves its PGN when you stop the server with Ctrl+C.
-After a game ends or you resign, use **Copy PGN** to copy the game notation.
+terminal game. Its PGN is written to the `games` folder as soon as the game
+ends or you resign; an unfinished game is saved when you stop the server with
+Ctrl+C. Use **Copy PGN** to copy the game notation.
 If the browser blocks clipboard access over local HTTP, the PGN is displayed
 selected so you can copy it manually.
-Use **New Game** to save the current game's PGN and choose a side again without
+Use **New Game** to save an unfinished game and choose a side again without
 restarting the server or reloading the engine. Start a new game after Maia has
 finished her current turn (or use `go` to skip the remaining think delay).
 

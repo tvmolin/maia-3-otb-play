@@ -1,7 +1,7 @@
 import chess
 from flask import Flask, jsonify, render_template, request
 
-from maia_game import GameSession, create_engine, save_pgn
+from maia_game import GameSession, create_engine
 
 MAIA_ELO = 800
 PLAYER_ELO = 760
@@ -32,6 +32,9 @@ def create_app(engine, board=None):
                 "game_over": game.is_game_over,
                 "quit": game.quit_requested,
                 "result": game.result if game.is_game_over else None,
+                "saved_pgn": (
+                    game.saved_pgn_path.name if game.saved_pgn_path is not None else None
+                ),
             }
         state.update(extra)
         return jsonify(state)
@@ -109,7 +112,7 @@ def create_app(engine, board=None):
                     )
                 saved_pgn = None
                 if game.started:
-                    saved_pgn = save_pgn(game.build_pgn(game.result))
+                    saved_pgn = game.save_pgn_file()
                 game.reset()
         except ValueError as error:
             return jsonify(error=str(error)), 409
@@ -158,10 +161,26 @@ def create_app(engine, board=None):
                         jsonify(error="The engine failed to respond; check the server console."),
                         503,
                     )
+        saved_pgn = None
+        if game.started and game.is_game_over:
+            try:
+                saved_pgn = game.save_pgn_file()
+            except Exception:
+                app.logger.exception("Failed to save the completed game PGN.")
+                return (
+                    jsonify(
+                        error=(
+                            "The game ended, but its PGN could not be saved. "
+                            "Start a new game to retry saving."
+                        )
+                    ),
+                    500,
+                )
         return game_state(
             action=command["action"],
             message=command["message"],
             messages=messages,
+            saved_pgn=saved_pgn.name if saved_pgn is not None else None,
         )
 
     return app
@@ -182,11 +201,10 @@ def main():
         finally:
             if app is not None:
                 game = app.config["CHESS_GAME"]
-                if game.started:
-                    pgn_text = game.build_pgn(game.result)
-                    pgn_path = save_pgn(pgn_text)
+                if game.started and game.saved_pgn_path is None:
+                    pgn_path = game.save_pgn_file()
                     print(f"\nSaved PGN to: {pgn_path}")
-                    print("\nGame PGN:\n" + pgn_text)
+                    print("\nGame PGN:\n" + pgn_path.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

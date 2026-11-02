@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,9 +11,10 @@ from web_app import create_app
 
 
 class FakeEngine:
-    def __init__(self, move="e5", error=None):
+    def __init__(self, move="e5", error=None, moves=None):
         self.move = move
         self.error = error
+        self.moves = list(moves or [])
         self.configured = []
 
     def configure(self, options):
@@ -21,8 +23,9 @@ class FakeEngine:
     def play(self, board, limit, info=None):
         if self.error:
             raise self.error
+        move = self.moves.pop(0) if self.moves else self.move
         return SimpleNamespace(
-            move=board.parse_san(self.move),
+            move=board.parse_san(move),
             info={"string": "policy_entropy 0.5"},
         )
 
@@ -172,23 +175,27 @@ class WebAppTests(unittest.TestCase):
         in_progress = resign_client.get("/api/pgn")
         self.assertEqual(in_progress.status_code, 409)
 
-        response = resign_client.post("/api/command", json={"text": "concede"})
+        with patch("maia_game.save_pgn", return_value=Path("resigned-game.pgn")) as save_pgn:
+            response = resign_client.post("/api/command", json={"text": "concede"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["result"], "1-0")
         self.assertTrue(response.json["game_over"])
+        self.assertEqual(response.json["saved_pgn"], "resigned-game.pgn")
+        save_pgn.assert_called_once()
+        self.assertIn('[Result "1-0"]', save_pgn.call_args.args[0])
         game = resign_client.application.config["CHESS_GAME"]
         pgn_response = resign_client.get("/api/pgn")
         self.assertEqual(pgn_response.status_code, 200)
         self.assertIn('[Result "1-0"]', pgn_response.json["pgn"])
         self.assertEqual(pgn_response.json["pgn"], game.build_pgn(game.result))
 
-        with patch("web_app.save_pgn") as save_pgn:
-            save_pgn.return_value.name = "resigned-game.pgn"
+        with patch("maia_game.save_pgn") as save_pgn:
             new_game_response = resign_client.post("/api/new-game")
 
         self.assertEqual(new_game_response.status_code, 200)
-        self.assertIn('[Result "1-0"]', save_pgn.call_args.args[0])
+        save_pgn.assert_not_called()
+        self.assertEqual(new_game_response.json["saved_pgn"], "resigned-game.pgn")
 
         quit_response = self.app.post("/api/command", json={"text": "exit"})
         self.assertEqual(quit_response.json["action"], "quit")
@@ -198,8 +205,7 @@ class WebAppTests(unittest.TestCase):
         with patch.object(GameSession, "wait_for_maia_think"):
             self.app.post("/api/command", json={"text": "e4"})
 
-        with patch("web_app.save_pgn") as save_pgn:
-            save_pgn.return_value.name = "maia-game-test.pgn"
+        with patch("maia_game.save_pgn", return_value=Path("maia-game-test.pgn")) as save_pgn:
             response = self.app.post("/api/new-game")
 
         self.assertEqual(response.status_code, 200)
@@ -207,6 +213,30 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.json["history"], [])
         self.assertEqual(response.json["saved_pgn"], "maia-game-test.pgn")
         self.assertEqual(len(self.app.application.config["CHESS_GAME"].board.move_stack), 0)
+        save_pgn.assert_called_once()
+
+    def test_completed_game_is_saved_immediately_and_only_once(self):
+        client = create_app(
+            FakeEngine(moves=["e5", "Qh4#"])
+        ).test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        with patch.object(GameSession, "wait_for_maia_think"), patch(
+            "maia_game.save_pgn", return_value=Path("completed-game.pgn")
+        ) as save_pgn:
+            client.post("/api/command", json={"text": "f3"})
+            response = client.post("/api/command", json={"text": "g4"})
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["result"], "0-1")
+            self.assertEqual(response.json["saved_pgn"], "completed-game.pgn")
+            save_pgn.assert_called_once()
+
+            saved_pgn = save_pgn.call_args.args[0]
+            self.assertIn('[Result "0-1"]', saved_pgn)
+            new_game_response = client.post("/api/new-game")
+
+        self.assertEqual(new_game_response.status_code, 200)
         save_pgn.assert_called_once()
 
     def test_new_game_is_rejected_while_maia_is_thinking(self):

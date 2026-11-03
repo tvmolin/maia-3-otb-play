@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -13,6 +14,79 @@ MAIA_ELO = 800
 PLAYER_ELO = 760
 HOST = "127.0.0.1"
 PORT = 5001
+TIME_CONTROLS = {
+    "3+2": (180, 2),
+    "5+0": (300, 0),
+    "5+3": (300, 3),
+    "10+0": (600, 0),
+}
+
+
+class ChessClock:
+    def __init__(self):
+        self.base_seconds = 0
+        self.increment_seconds = 0
+        self.remaining = {chess.WHITE: 0.0, chess.BLACK: 0.0}
+        self.running_color = None
+        self.started_at = None
+
+    def start(self, base_seconds, increment_seconds, color, now):
+        self.base_seconds = base_seconds
+        self.increment_seconds = increment_seconds
+        self.remaining = {chess.WHITE: float(base_seconds), chess.BLACK: float(base_seconds)}
+        self.running_color = color
+        self.started_at = now
+
+    def stop(self):
+        self.running_color = None
+        self.started_at = None
+
+    def settle(self, now):
+        if self.running_color is None:
+            return None
+        color = self.running_color
+        self.remaining[color] -= max(0.0, now - self.started_at)
+        if self.remaining[color] <= 0:
+            self.remaining[color] = 0.0
+            self.stop()
+            return color
+        self.started_at = now
+        return None
+
+    def complete_move(self, mover, next_color, now):
+        if self.running_color != mover:
+            raise RuntimeError("The chess clock is not running for the player who moved.")
+        self.remaining[mover] += self.increment_seconds
+        self.running_color = next_color
+        self.started_at = now if next_color is not None else None
+
+    def save_turn(self):
+        return self.remaining.copy()
+
+    def restore_turn(self, remaining, color, now):
+        self.remaining = remaining.copy()
+        self.running_color = color
+        self.started_at = now
+
+    def data(self, now):
+        remaining = self.remaining.copy()
+        if self.running_color is not None:
+            elapsed = max(0.0, now - self.started_at)
+            remaining[self.running_color] = max(
+                0.0, remaining[self.running_color] - elapsed
+            )
+        return {
+            "remaining_ms": {
+                "white": round(remaining[chess.WHITE] * 1000),
+                "black": round(remaining[chess.BLACK] * 1000),
+            },
+            "running_color": (
+                "white" if self.running_color == chess.WHITE
+                else "black" if self.running_color == chess.BLACK
+                else None
+            ),
+            "increment_seconds": self.increment_seconds,
+        }
 
 
 def create_app(engine, board=None):
@@ -27,10 +101,31 @@ def create_app(engine, board=None):
         started=False,
     )
     app.config["CHESS_GAME"] = game
-    app.config["CHESSGROUND_REQUEST_LOCK"] = threading.Lock()
+    app.config["CHESSGROUND_REQUEST_LOCK"] = threading.RLock()
+    clock = ChessClock()
+    app.config["CHESSGROUND_CLOCK"] = clock
+    clock_history = []
+
+    def save_finished_game():
+        if game.started and game.is_game_over and game.saved_pgn_path is None:
+            game.save_pgn_file()
+
+    def sync_clock(now=None):
+        loser = clock.settle(time.monotonic() if now is None else now)
+        if loser is not None:
+            game.finish_on_time(loser)
+            app.config["CHESSGROUND_TIMEOUT_LOSER"] = (
+                "white" if loser == chess.WHITE else "black"
+            )
+            save_finished_game()
+        return loser
 
     def state_data():
-        with game.lock:
+        with app.config["CHESSGROUND_REQUEST_LOCK"], game.lock:
+            now = time.monotonic()
+            sync_clock(now)
+            if game.is_game_over:
+                save_finished_game()
             board = game.board
             can_move = (
                 game.started
@@ -84,6 +179,13 @@ def create_app(engine, board=None):
                 "ply": len(board.move_stack),
                 "maia_elo": game.maia_elo,
                 "player_elo": game.player_elo,
+                "time_control": app.config.get("CHESSGROUND_TIME_CONTROL"),
+                "termination": (
+                    "timeout"
+                    if app.config.get("CHESSGROUND_TIMEOUT_LOSER")
+                    else None
+                ),
+                "clock": clock.data(now),
             }
 
     def state_response(status=200, error=None, **extra):
@@ -96,11 +198,15 @@ def create_app(engine, board=None):
     def play_maia_turn():
         turn = game.choose_maia_move()
         game.wait_for_maia_think(turn.think_seconds)
-        return game.play_maia_move(turn)
-
-    def save_finished_game():
-        if game.started and game.is_game_over:
-            game.save_pgn_file()
+        now = time.monotonic()
+        loser = sync_clock(now)
+        if loser is not None:
+            game.finish_maia_think()
+            return None
+        san = game.play_maia_move(turn)
+        next_color = None if game.is_game_over else game.player_color
+        clock.complete_move(not game.player_color, next_color, now)
+        return san
 
     @app.get("/")
     def index():
@@ -131,6 +237,9 @@ def create_app(engine, board=None):
 
         maia_elo = payload.get("maia_elo", game.maia_elo)
         player_elo = payload.get("player_elo", game.player_elo)
+        time_control = payload.get("time_control", "5+0")
+        if not isinstance(time_control, str) or time_control not in TIME_CONTROLS:
+            return state_response(400, "Choose a supported time control.")
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             try:
                 started_now = game.start(
@@ -144,13 +253,29 @@ def create_app(engine, board=None):
                 app.logger.exception("Failed to configure Maia for Chessground.")
                 return state_response(503, "Could not configure the engine.")
 
+            if started_now:
+                base_seconds, increment_seconds = TIME_CONTROLS[time_control]
+                app.config["CHESSGROUND_TIME_CONTROL"] = time_control
+                app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
+                clock_history.clear()
+                clock.start(
+                    base_seconds,
+                    increment_seconds,
+                    chess.WHITE,
+                    time.monotonic(),
+                )
             if started_now and color == "black":
                 try:
                     play_maia_turn()
                 except Exception:
                     game.cancel_start()
+                    clock.stop()
+                    clock_history.clear()
+                    app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                    app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                     app.logger.exception("Maia failed to make the opening move.")
                     return state_response(503, "The engine failed to make its opening move.")
+            save_finished_game()
         return state_response()
 
     @app.post("/api/move")
@@ -164,6 +289,9 @@ def create_app(engine, board=None):
             return state_response(400, "Send the current ply count with the move.")
 
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            loser = sync_clock()
+            if loser is not None:
+                return state_response(409, "Your clock ran out.")
             if expected_ply != len(game.board.move_stack):
                 return state_response(409, "The position changed. The board was refreshed.")
             if not game.started:
@@ -171,16 +299,28 @@ def create_app(engine, board=None):
             if game.is_thinking:
                 return state_response(409, "Maia is thinking.")
 
+            now = time.monotonic()
+            if clock.running_color != game.player_color:
+                return state_response(409, "It is not your turn.")
+            clock_checkpoint = clock.save_turn()
             try:
                 game.apply_player_move(move_text)
             except ValueError as error:
                 return state_response(400, str(error))
+            clock.complete_move(
+                game.player_color,
+                None if game.is_game_over else not game.player_color,
+                now,
+            )
+            clock_history.append(clock_checkpoint)
             try:
                 if not game.is_game_over:
                     play_maia_turn()
                 save_finished_game()
             except Exception:
                 game.undo_plies(1)
+                clock_history.pop()
+                clock.restore_turn(clock_checkpoint, game.player_color, time.monotonic())
                 app.logger.exception("Maia failed to respond to a Chessground move.")
                 return state_response(503, "The engine failed to respond.")
         return state_response()
@@ -193,14 +333,25 @@ def create_app(engine, board=None):
             return state_response(400, "Supported commands are undo and resign.")
 
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            loser = sync_clock()
+            if loser is not None:
+                return state_response(409, "Your clock ran out.")
+            if text == "resign" and clock.running_color != game.player_color:
+                return state_response(409, "It is not your turn.")
             try:
                 result = game.handle_player_command(text)
             except ValueError as error:
                 return state_response(409, str(error))
             try:
                 if result["action"] == "undo" and not game.is_game_over:
+                    if clock_history:
+                        clock.restore_turn(
+                            clock_history.pop(), game.player_color, time.monotonic()
+                        )
                     if game.board.turn != game.player_color:
                         play_maia_turn()
+                elif result["action"] == "resign":
+                    clock.stop()
                 save_finished_game()
             except Exception:
                 app.logger.exception("Failed to complete a Chessground command.")
@@ -215,6 +366,10 @@ def create_app(engine, board=None):
                     raise ValueError("Maia is thinking; wait for her move to finish.")
                 saved_pgn = game.save_pgn_file() if game.started else None
                 game.reset()
+                clock.stop()
+                clock_history.clear()
+                app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
             except ValueError as error:
                 return state_response(409, str(error))
             except Exception:

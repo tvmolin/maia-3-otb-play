@@ -9,8 +9,13 @@ const setupForm = document.querySelector('#setup');
 const colorInput = document.querySelector('#player-color');
 const maiaEloInput = document.querySelector('#maia-elo');
 const playerEloInput = document.querySelector('#player-elo');
+const timeControlInput = document.querySelector('#time-control');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
+const clockElements = {
+  white: document.querySelector('#white-clock'),
+  black: document.querySelector('#black-clock'),
+};
 const promotionDialog = document.querySelector('#promotion-dialog');
 const newGameButton = document.querySelector('#new-game');
 const undoButton = document.querySelector('#undo');
@@ -20,6 +25,7 @@ const pgnButton = document.querySelector('#download-pgn');
 let currentState;
 let requestPending = false;
 let promotionMove;
+let clockState;
 
 const ground = Chessground(boardElement, {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
@@ -39,6 +45,8 @@ function renderState(state) {
   currentState = state;
   maiaEloInput.value = state.maia_elo;
   playerEloInput.value = state.player_elo;
+  if (state.time_control) timeControlInput.value = state.time_control;
+  renderClocks(state.clock, state.started);
   const canMove = Boolean(state.can_move) && !requestPending;
   ground.set({
     fen: state.fen,
@@ -70,7 +78,8 @@ function renderState(state) {
   }
 
   if (state.game_over) {
-    statusElement.textContent = `Game over${state.result ? ` (${state.result})` : ''}.`;
+    const reason = state.termination === 'timeout' ? 'Time out. ' : '';
+    statusElement.textContent = `${reason}Game over${state.result ? ` (${state.result})` : ''}.`;
   } else if (!state.started) {
     statusElement.textContent = 'Choose a side and start a game.';
   } else if (state.maia_thinking || requestPending) {
@@ -78,6 +87,78 @@ function renderState(state) {
   } else {
     statusElement.textContent = state.can_move ? 'Your move.' : 'Waiting for Maia.';
   }
+}
+
+function getDisplayedClockTimes() {
+  if (!clockState?.started) return { white: 0, black: 0 };
+  const remaining = { ...clockState.remainingMs };
+  if (clockState.runningColor) {
+    remaining[clockState.runningColor] = Math.max(
+      0,
+      remaining[clockState.runningColor] -
+        (performance.now() - clockState.sampledAt),
+    );
+  }
+  return remaining;
+}
+
+function formatClock(milliseconds) {
+  if (milliseconds < 10_000) {
+    const tenths = Math.ceil(milliseconds / 100);
+    return `${Math.floor(tenths / 10)}.${tenths % 10}`;
+  }
+  const seconds = Math.ceil(milliseconds / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function updateClockDisplay() {
+  const remaining = getDisplayedClockTimes();
+  for (const color of ['white', 'black']) {
+    const element = clockElements[color];
+    const timeElement = element.querySelector('time');
+    const milliseconds = remaining[color];
+    timeElement.textContent = clockState?.started
+      ? formatClock(milliseconds)
+      : '--:--';
+    if (clockState?.started) {
+      timeElement.dateTime = `PT${(milliseconds / 1000).toFixed(3)}S`;
+    } else {
+      timeElement.removeAttribute('datetime');
+    }
+    element.classList.toggle(
+      'active',
+      Boolean(clockState?.started) && clockState.runningColor === color,
+    );
+    element.classList.toggle(
+      'expiring',
+      clockState?.runningColor === color && milliseconds < 10_000,
+    );
+  }
+}
+
+function renderClocks(clock, started) {
+  clockState = {
+    remainingMs: clock.remaining_ms,
+    runningColor: started ? clock.running_color : null,
+    incrementSeconds: clock.increment_seconds,
+    sampledAt: performance.now(),
+    started,
+  };
+  updateClockDisplay();
+}
+
+function optimisticallyStartMaiaClock() {
+  if (!clockState?.started) return;
+  const remaining = getDisplayedClockTimes();
+  const playerColor = currentState.player_color;
+  remaining[playerColor] += clockState.incrementSeconds * 1000;
+  clockState = {
+    ...clockState,
+    remainingMs: remaining,
+    runningColor: playerColor === 'white' ? 'black' : 'white',
+    sampledAt: performance.now(),
+  };
+  updateClockDisplay();
 }
 
 async function readJson(response) {
@@ -118,6 +199,7 @@ function setPending(pending) {
 async function sendMove(move) {
   const expectedPly = currentState.ply;
   setPending(true);
+  optimisticallyStartMaiaClock();
   try {
     const response = await fetch('/api/move', {
       method: 'POST',
@@ -166,6 +248,7 @@ setupForm.addEventListener('submit', async (event) => {
         color: colorInput.value,
         maia_elo: Number(maiaEloInput.value),
         player_elo: Number(playerEloInput.value),
+        time_control: timeControlInput.value,
       }),
     });
     const data = await readJson(response);
@@ -249,3 +332,5 @@ pgnButton.addEventListener('click', async () => {
 refreshState().catch((error) => {
   statusElement.textContent = error.message;
 });
+
+setInterval(updateClockDisplay, 100);

@@ -201,6 +201,16 @@ class GameSession:
             self.started = False
             self.player_color = chess.WHITE
 
+    def finish_on_time(self, loser_color):
+        with self.lock:
+            if self.is_game_over:
+                return
+            winner_color = not loser_color
+            if self.board.has_insufficient_material(winner_color):
+                self.final_result = "1/2-1/2"
+            else:
+                self.final_result = "1-0" if winner_color == chess.WHITE else "0-1"
+
     def reset(self):
         with self.lock:
             with self._think_state_lock:

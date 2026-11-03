@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import chess
 
-from chessground_app import create_app
+from chessground_app import TIME_CONTROLS, create_app
 from maia_game import GameSession
 
 
@@ -50,6 +50,93 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["state"]["can_move"])
         self.assertIn("e4", response.json["state"]["destinations"]["e2"])
+        self.assertEqual(response.json["state"]["time_control"], "5+0")
+        self.assertEqual(
+            response.json["state"]["clock"]["remaining_ms"],
+            {"white": 300_000, "black": 300_000},
+        )
+
+    def test_clock_increment_is_added_after_each_player_completes_a_move(self):
+        now = [100.0]
+        with (
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "wait_for_maia_think"),
+        ):
+            self.client.post(
+                "/api/start",
+                json={"color": "white", "time_control": "5+3"},
+            )
+            now[0] = 102
+            response = self.client.post(
+                "/api/move",
+                json={"move": "e2e4", "expected_ply": 0},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json["state"]["clock"]["remaining_ms"],
+            {"white": 301_000, "black": 303_000},
+        )
+        self.assertEqual(response.json["state"]["clock"]["running_color"], "white")
+
+    def test_player_timeout_rejects_move_and_sets_the_result(self):
+        now = [0.0]
+        with (
+            patch.dict(TIME_CONTROLS, {"1+0": (1, 0)}),
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "save_pgn_file", return_value=Path("timeout.pgn")),
+        ):
+            self.client.post(
+                "/api/start",
+                json={"color": "white", "time_control": "1+0"},
+            )
+            now[0] = 2
+            response = self.client.post(
+                "/api/move",
+                json={"move": "e2e4", "expected_ply": 0},
+            )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["state"]["ply"], 0)
+        self.assertTrue(response.json["state"]["game_over"])
+        self.assertEqual(response.json["state"]["result"], "0-1")
+        self.assertEqual(response.json["state"]["termination"], "timeout")
+
+    def test_maia_timeout_stops_before_applying_her_move(self):
+        now = [0.0]
+
+        def think_then_expire(_self, _seconds):
+            now[0] = 2
+
+        with (
+            patch.dict(TIME_CONTROLS, {"1+0": (1, 0)}),
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "wait_for_maia_think", think_then_expire),
+            patch.object(GameSession, "save_pgn_file", return_value=Path("timeout.pgn")),
+        ):
+            self.client.post(
+                "/api/start",
+                json={"color": "white", "time_control": "1+0"},
+            )
+            response = self.client.post(
+                "/api/move",
+                json={"move": "e2e4", "expected_ply": 0},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["state"]["ply"], 1)
+        self.assertTrue(response.json["state"]["game_over"])
+        self.assertEqual(response.json["state"]["result"], "1-0")
+        self.assertEqual(response.json["state"]["termination"], "timeout")
+        self.assertEqual(response.json["state"]["clock"]["running_color"], None)
+
+    def test_timeout_is_a_draw_when_the_winner_has_insufficient_material(self):
+        game = GameSession(FakeEngine(), board=chess.Board("8/8/8/8/8/8/4k3/6K1 w - - 0 1"))
+
+        game.finish_on_time(chess.WHITE)
+
+        self.assertTrue(game.is_game_over)
+        self.assertEqual(game.result, "1/2-1/2")
 
     def test_move_returns_authoritative_position_after_maia_responds(self):
         self.client.post("/api/start", json={"color": "white"})

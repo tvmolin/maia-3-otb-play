@@ -43,20 +43,42 @@ h1 {
   overflow: hidden;
 }
 
-cg-board {
-  background-color: #20262e;
-  background-image: conic-gradient(
-    #303a46 25%,
-    #20262e 0 50%,
-    #303a46 0 75%,
-    #20262e 0
-  );
-  background-size: 25% 25%;
-}
-
 .sidebar {
   display: grid;
   gap: 16px;
+}
+
+.clocks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.clock-display {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #343c46;
+  border-radius: 8px;
+  color: #aab4c0;
+  font-size: 0.9rem;
+}
+
+.clock-display time {
+  color: #e6edf3;
+  font-size: 1.8rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.clock-display.active {
+  border-color: #7ab7ff;
+  background: #202b38;
+  color: #e6edf3;
+}
+
+.clock-display.expiring time {
+  color: #ff8585;
 }
 
 .panel {

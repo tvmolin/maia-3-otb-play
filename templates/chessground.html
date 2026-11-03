@@ -26,8 +26,25 @@
             <input id="maia-elo" name="maia_elo" type="number" min="0" max="5000" value="800" required>
             <label for="player-elo">Your Elo</label>
             <input id="player-elo" name="player_elo" type="number" min="0" max="5000" value="760" required>
+            <label for="time-control">Time control</label>
+            <select id="time-control" name="time_control">
+              <option value="3+2">3+2</option>
+              <option value="5+0" selected>5+0</option>
+              <option value="5+3">5+3</option>
+              <option value="10+0">10+0</option>
+            </select>
             <button type="submit">Start game</button>
           </form>
+          <section class="panel clocks" aria-label="Chess clock">
+            <div id="white-clock" class="clock-display">
+              <span>White</span>
+              <time>--:--</time>
+            </div>
+            <div id="black-clock" class="clock-display">
+              <span>Black</span>
+              <time>--:--</time>
+            </div>
+          </section>
           <section class="panel">
             <div id="status" role="status" aria-live="polite">Loading game…</div>
             <div class="actions">

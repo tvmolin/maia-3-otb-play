@@ -183,6 +183,33 @@ finished her current turn (or use `go` to skip the remaining think delay).
 
 The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"player_elo":760}` (use `"black"` to play Black), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. `POST /api/new-game` saves the current PGN and returns to side/rating selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
 
+## Play Maia on a Chessground Board
+
+The separate Chessground interface is for playing Maia on this computer; it
+does not replace or change the OTB web app above. Build its frontend once from
+the repository root:
+
+```powershell
+cd .\frontend
+npm ci
+npm run build
+cd ..
+```
+
+Install the Python project if needed, pre-cache the model, and start the local
+app:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m maia3.cache --model maia3-79m
+.\.venv\Scripts\python.exe .\chessground_app.py
+```
+
+The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
+only. Select a side and ratings, then move pieces on the board. The backend
+validates moves and remains the source of truth for game state. The app uses
+the 79M model, which must be downloaded before play.
+
 ## Models
 
 The built-in aliases and preset commands apply the correct architecture settings

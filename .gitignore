@@ -50,6 +50,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+node_modules/
+static/chessground/
 env/
 venv/
 ENV/

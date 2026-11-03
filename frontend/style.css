@@ -1,0 +1,139 @@
+:root {
+  color-scheme: light;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #202124;
+  background: #f3f4f6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+main {
+  width: min(1120px, 100%);
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 20px;
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, min(68vh, 680px)) minmax(240px, 1fr);
+  align-items: start;
+  gap: 28px;
+}
+
+.board-column {
+  min-width: 0;
+}
+
+.cg-wrap {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.sidebar {
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  padding: 16px;
+  border: 1px solid #dfe1e5;
+  border-radius: 10px;
+  background: #fff;
+}
+
+#setup {
+  display: grid;
+  gap: 10px;
+}
+
+#setup label {
+  font-weight: 600;
+}
+
+#setup select,
+#setup input,
+button {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #c8cbd0;
+  border-radius: 7px;
+  background: #fff;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#status {
+  min-height: 1.5em;
+  color: #555;
+}
+
+#move-history {
+  max-height: 260px;
+  margin: 12px 0 0;
+  padding-left: 24px;
+  overflow-y: auto;
+  line-height: 1.7;
+}
+
+#promotion-dialog {
+  border: 0;
+  border-radius: 10px;
+  box-shadow: 0 8px 40px #0004;
+}
+
+#promotion-dialog::backdrop {
+  background: #0007;
+}
+
+.promotion-options {
+  display: flex;
+  gap: 8px;
+}
+
+.promotion-options button {
+  min-width: 48px;
+  font-size: 1.4rem;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  body {
+    padding: 14px;
+  }
+
+  .game-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

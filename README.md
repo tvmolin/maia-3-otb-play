@@ -206,11 +206,12 @@ app:
 ```
 
 The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
-only. Select a side and ratings, then move pieces on the board. The backend
-validates moves and remains the source of truth for game state. The app uses
-the 79M model, which must be downloaded before play. Choose a clock preset
-(3+2, 5+0, 5+3, or 10+0); both clocks are enforced by the server, including
-Maia's engine and think time.
+only. Select a side, ratings, and a time control, then move pieces on the board.
+The custom clock accepts 1–180 minutes per side and a 0–60 second increment.
+The backend validates moves and remains the source of truth for game state.
+The app uses the 79M model, which must be downloaded before play. Preset
+clocks are 3+2, 5+0, 5+3, and 10+0. Both clocks are enforced by the server,
+including Maia's engine and think time.
 
 ## Models
 

@@ -13,7 +13,8 @@ A first local Chessground app is implemented in `chessground_app.py`, with its
 frontend in `frontend/` and `templates/chessground.html`. It reuses
 `GameSession`, serves only on loopback, and does not change the OTB app. See
 the [README launch instructions](./README.md#play-maia-on-a-chessground-board).
-It includes server-enforced 3+2, 5+0, 5+3, and 10+0 clocks; Maia's clock runs
+It includes server-enforced 3+2, 5+0, 5+3, and 10+0 presets plus custom
+base-time/increment controls (1–180 minutes, 0–60 seconds); Maia's clock runs
 while the engine computes and waits, and undo restores the clock before the
 taken-back turn.
 

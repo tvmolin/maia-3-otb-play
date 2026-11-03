@@ -76,6 +76,7 @@ class ChessClock:
                 0.0, remaining[self.running_color] - elapsed
             )
         return {
+            "base_seconds": self.base_seconds,
             "remaining_ms": {
                 "white": round(remaining[chess.WHITE] * 1000),
                 "black": round(remaining[chess.BLACK] * 1000),
@@ -238,7 +239,34 @@ def create_app(engine, board=None):
         maia_elo = payload.get("maia_elo", game.maia_elo)
         player_elo = payload.get("player_elo", game.player_elo)
         time_control = payload.get("time_control", "5+0")
-        if not isinstance(time_control, str) or time_control not in TIME_CONTROLS:
+        if not isinstance(time_control, str):
+            return state_response(400, "Choose a supported time control.")
+        if time_control == "custom":
+            base_time_minutes = payload.get("base_time_minutes")
+            increment_seconds = payload.get("increment_seconds")
+            if (
+                isinstance(base_time_minutes, bool)
+                or not isinstance(base_time_minutes, int)
+                or not 1 <= base_time_minutes <= 180
+            ):
+                return state_response(
+                    400, "Custom base time must be a whole number from 1 to 180 minutes."
+                )
+            if (
+                isinstance(increment_seconds, bool)
+                or not isinstance(increment_seconds, int)
+                or not 0 <= increment_seconds <= 60
+            ):
+                return state_response(
+                    400, "Custom increment must be a whole number from 0 to 60 seconds."
+                )
+            time_control_values = (
+                base_time_minutes * 60,
+                increment_seconds,
+            )
+        elif time_control in TIME_CONTROLS:
+            time_control_values = TIME_CONTROLS[time_control]
+        else:
             return state_response(400, "Choose a supported time control.")
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             try:
@@ -254,7 +282,7 @@ def create_app(engine, board=None):
                 return state_response(503, "Could not configure the engine.")
 
             if started_now:
-                base_seconds, increment_seconds = TIME_CONTROLS[time_control]
+                base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                 clock_history.clear()

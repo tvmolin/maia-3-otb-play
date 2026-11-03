@@ -10,6 +10,9 @@ const colorInput = document.querySelector('#player-color');
 const maiaEloInput = document.querySelector('#maia-elo');
 const playerEloInput = document.querySelector('#player-elo');
 const timeControlInput = document.querySelector('#time-control');
+const customTimeControl = document.querySelector('#custom-time-control');
+const baseTimeMinutesInput = document.querySelector('#base-time-minutes');
+const incrementSecondsInput = document.querySelector('#increment-seconds');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
 const clockElements = {
@@ -53,7 +56,14 @@ function renderState(state) {
   }
   maiaEloInput.value = state.maia_elo;
   playerEloInput.value = state.player_elo;
-  if (state.time_control) timeControlInput.value = state.time_control;
+  if (state.time_control) {
+    timeControlInput.value = state.time_control;
+    customTimeControl.hidden = state.time_control !== 'custom';
+  }
+  if (state.clock.base_seconds) {
+    baseTimeMinutesInput.value = state.clock.base_seconds / 60;
+    incrementSecondsInput.value = state.clock.increment_seconds;
+  }
   renderClocks(state.clock, state.started);
   const canMove = Boolean(state.can_move) && !requestPending;
   ground.set({
@@ -303,6 +313,8 @@ setupForm.addEventListener('submit', async (event) => {
         maia_elo: Number(maiaEloInput.value),
         player_elo: Number(playerEloInput.value),
         time_control: timeControlInput.value,
+        base_time_minutes: Number(baseTimeMinutesInput.value),
+        increment_seconds: Number(incrementSecondsInput.value),
       }),
     });
     const data = await readJson(response);
@@ -313,6 +325,10 @@ setupForm.addEventListener('submit', async (event) => {
   } finally {
     submitButton.disabled = false;
   }
+});
+
+timeControlInput.addEventListener('change', () => {
+  customTimeControl.hidden = timeControlInput.value !== 'custom';
 });
 
 promotionDialog.addEventListener('click', (event) => {

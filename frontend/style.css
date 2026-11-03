@@ -93,6 +93,15 @@ h1 {
   gap: 10px;
 }
 
+#custom-time-control {
+  display: grid;
+  gap: 10px;
+}
+
+#custom-time-control[hidden] {
+  display: none;
+}
+
 #setup label {
   font-weight: 600;
 }

@@ -56,6 +56,42 @@ class ChessgroundAppTests(unittest.TestCase):
             {"white": 300_000, "black": 300_000},
         )
 
+    def test_custom_clock_uses_requested_base_time_and_increment(self):
+        response = self.client.post(
+            "/api/start",
+            json={
+                "color": "white",
+                "time_control": "custom",
+                "base_time_minutes": 7,
+                "increment_seconds": 4,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        state = response.json["state"]
+        self.assertEqual(state["time_control"], "custom")
+        self.assertEqual(state["clock"]["base_seconds"], 420)
+        self.assertEqual(state["clock"]["increment_seconds"], 4)
+        self.assertEqual(
+            state["clock"]["remaining_ms"],
+            {"white": 420_000, "black": 420_000},
+        )
+
+    def test_custom_clock_rejects_out_of_range_values(self):
+        for minutes, increment in ((0, 0), (181, 0), (5, -1), (5, 61), (True, 0)):
+            with self.subTest(minutes=minutes, increment=increment):
+                client = create_app(FakeEngine()).test_client()
+                response = client.post(
+                    "/api/start",
+                    json={
+                        "color": "white",
+                        "time_control": "custom",
+                        "base_time_minutes": minutes,
+                        "increment_seconds": increment,
+                    },
+                )
+                self.assertEqual(response.status_code, 400)
+
     def test_clock_increment_is_added_after_each_player_completes_a_move(self):
         now = [100.0]
         with (

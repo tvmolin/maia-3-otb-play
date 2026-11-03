@@ -1,8 +1,8 @@
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: #202124;
-  background: #f3f4f6;
+  color: #e6edf3;
+  background: #14171b;
 }
 
 * {
@@ -43,6 +43,17 @@ h1 {
   overflow: hidden;
 }
 
+cg-board {
+  background-color: #20262e;
+  background-image: conic-gradient(
+    #303a46 25%,
+    #20262e 0 50%,
+    #303a46 0 75%,
+    #20262e 0
+  );
+  background-size: 25% 25%;
+}
+
 .sidebar {
   display: grid;
   gap: 16px;
@@ -50,9 +61,9 @@ h1 {
 
 .panel {
   padding: 16px;
-  border: 1px solid #dfe1e5;
+  border: 1px solid #343c46;
   border-radius: 10px;
-  background: #fff;
+  background: #1c2128;
 }
 
 #setup {
@@ -69,9 +80,10 @@ h1 {
 button {
   min-height: 40px;
   padding: 8px 10px;
-  border: 1px solid #c8cbd0;
+  border: 1px solid #424c58;
   border-radius: 7px;
-  background: #fff;
+  background: #252c35;
+  color: inherit;
   font: inherit;
 }
 
@@ -80,20 +92,31 @@ button {
   font-weight: 600;
 }
 
+button:hover:not(:disabled) {
+  background: #303a46;
+}
+
+button:focus-visible,
+#setup select:focus-visible,
+#setup input:focus-visible {
+  outline: 2px solid #7ab7ff;
+  outline-offset: 2px;
+}
+
 button:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+#status {
+  min-height: 1.5em;
+  color: #aab4c0;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-}
-
-#status {
-  min-height: 1.5em;
-  color: #555;
 }
 
 #move-history {
@@ -107,6 +130,8 @@ button:disabled {
 #promotion-dialog {
   border: 0;
   border-radius: 10px;
+  background: #1c2128;
+  color: #e6edf3;
   box-shadow: 0 8px 40px #0004;
 }
 

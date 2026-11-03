@@ -26,6 +26,7 @@ let currentState;
 let requestPending = false;
 let promotionMove;
 let clockState;
+let audioContext;
 
 const ground = Chessground(boardElement, {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
@@ -42,7 +43,14 @@ function destinationsToMap(destinations = {}) {
 }
 
 function renderState(state) {
+  const previousState = currentState;
   currentState = state;
+  if (previousState) {
+    const newEngineMoves = state.history.slice(previousState.history.length);
+    for (const move of newEngineMoves) {
+      if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
+    }
+  }
   maiaEloInput.value = state.maia_elo;
   playerEloInput.value = state.player_elo;
   if (state.time_control) timeControlInput.value = state.time_control;
@@ -87,6 +95,49 @@ function renderState(state) {
   } else {
     statusElement.textContent = state.can_move ? 'Your move.' : 'Waiting for Maia.';
   }
+}
+
+function playMoveSound(capture = false) {
+  void unlockMoveSounds().then(() => {
+    if (!audioContext || audioContext.state !== 'running') return;
+    const now = audioContext.currentTime;
+    const impacts = capture ? [0, 0.095] : [0];
+    for (const delay of impacts) {
+      const oscillator = audioContext.createOscillator();
+      const volume = audioContext.createGain();
+      const start = now + delay;
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(capture ? 410 : 520, start);
+      oscillator.frequency.exponentialRampToValueAtTime(
+        capture ? 155 : 230,
+        start + 0.055,
+      );
+      volume.gain.setValueAtTime(0.0001, start);
+      volume.gain.exponentialRampToValueAtTime(capture ? 0.16 : 0.12, start + 0.006);
+      volume.gain.exponentialRampToValueAtTime(0.0001, start + 0.075);
+      oscillator.connect(volume);
+      volume.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + 0.08);
+    }
+  });
+}
+
+function unlockMoveSounds() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return Promise.resolve();
+  try {
+    audioContext ||= new AudioContextClass();
+  } catch (error) {
+    console.warn('Could not initialize chess move sounds.', error);
+    return Promise.resolve();
+  }
+  if (audioContext.state === 'suspended') {
+    return audioContext.resume().catch((error) => {
+      console.warn('Could not play chess move sound.', error);
+    });
+  }
+  return Promise.resolve();
 }
 
 function getDisplayedClockTimes() {
@@ -196,9 +247,10 @@ function setPending(pending) {
   statusElement.textContent = 'Maia is thinking…';
 }
 
-async function sendMove(move) {
+async function sendMove(move, capture = false) {
   const expectedPly = currentState.ply;
   setPending(true);
+  playMoveSound(capture);
   optimisticallyStartMaiaClock();
   try {
     const response = await fetch('/api/move', {
@@ -216,27 +268,29 @@ async function sendMove(move) {
   }
 }
 
-function onBoardMove(origin, destination) {
+function onBoardMove(origin, destination, metadata) {
   if (!currentState?.can_move || requestPending) {
     void refreshState();
     return;
   }
 
+  const capture = Boolean(metadata.captured);
   const moveKey = `${origin}${destination}`;
   const promotions = currentState.promotions[moveKey];
   if (promotions?.length) {
-    promotionMove = { moveKey, promotions };
+    promotionMove = { moveKey, promotions, capture };
     for (const button of promotionDialog.querySelectorAll('[data-piece]')) {
       button.hidden = !promotions.includes(button.dataset.piece);
     }
     promotionDialog.showModal();
     return;
   }
-  void sendMove(moveKey);
+  void sendMove(moveKey, capture);
 }
 
 setupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
+  unlockMoveSounds();
   const submitButton = setupForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   statusElement.textContent = 'Starting game…';
@@ -265,9 +319,10 @@ promotionDialog.addEventListener('click', (event) => {
   const piece = event.target.closest('[data-piece]')?.dataset.piece;
   if (!piece || !promotionMove?.promotions.includes(piece)) return;
   const move = `${promotionMove.moveKey}${piece}`;
+  const capture = promotionMove.capture;
   promotionMove = undefined;
   promotionDialog.close();
-  void sendMove(move);
+  void sendMove(move, capture);
 });
 
 promotionDialog.addEventListener('cancel', () => {

@@ -173,7 +173,7 @@ def sample_from_logits(logits, temperature, top_p):
     if top_p < 1.0:
         sorted_probs, sorted_idx = torch.sort(probs, descending=True)
         cumulative = torch.cumsum(sorted_probs, dim=-1)
-        keep = cumulative <= top_p
+        keep = cumulative - sorted_probs < top_p
         keep[0] = True  # always keep top-1
         kept_probs = sorted_probs[keep]
         kept_idx = sorted_idx[keep]

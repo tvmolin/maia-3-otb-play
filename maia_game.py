@@ -36,7 +36,7 @@ class MaiaTurn:
     think_seconds: float
 
 
-def create_engine(maia_elo, player_elo):
+def create_engine(maia_elo, player_elo, temperature=0.8, top_p=0.95):
     engine = chess.engine.SimpleEngine.popen_uci(
         [
             sys.executable,
@@ -47,9 +47,9 @@ def create_engine(maia_elo, player_elo):
             "--elo",
             str(maia_elo),
             "--temperature",
-            "0.2",
+            str(temperature),
             "--top-p",
-            "0.9",
+            str(top_p),
             "--use-uci-history",
             "--seed",
             str(secrets.randbits(32)),

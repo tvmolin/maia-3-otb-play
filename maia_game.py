@@ -111,6 +111,7 @@ class GameSession:
         player_name="Devonty",
         player_elo=760,
         maia_elo=800,
+        temperature=0.8,
         board=None,
         started=True,
     ):
@@ -120,6 +121,7 @@ class GameSession:
         self.player_name = player_name
         self.player_elo = player_elo
         self.maia_elo = maia_elo
+        self.temperature = temperature
         self.maia_name = f"Maia {maia_elo}"
         self._pending_maia_elo = maia_elo
         self._pending_player_elo = player_elo
@@ -152,7 +154,7 @@ class GameSession:
     def player_color_name(self):
         return "white" if self.player_color == chess.WHITE else "black"
 
-    def start(self, player_color, maia_elo=None, player_elo=None):
+    def start(self, player_color, maia_elo=None, player_elo=None, temperature=None):
         with self.lock:
             if self.started:
                 if self.player_color == player_color:
@@ -163,16 +165,25 @@ class GameSession:
             maia_elo = self._pending_maia_elo if maia_elo is None else maia_elo
             player_elo = self._pending_player_elo if player_elo is None else player_elo
             self.validate_elos(maia_elo, player_elo)
+            if temperature is not None and (
+                isinstance(temperature, bool)
+                or not isinstance(temperature, (int, float))
+                or not math.isfinite(temperature)
+                or temperature < 0
+            ):
+                raise ValueError("Temperature must be a non-negative number.")
+            options = {}
             if self.maia_elo != maia_elo or self.player_elo != player_elo:
-                self.engine.configure(
-                    {
-                        "SelfElo": maia_elo,
-                        "OppoElo": player_elo,
-                    }
-                )
-                self.maia_elo = maia_elo
-                self.player_elo = player_elo
-                self.maia_name = f"Maia {self.maia_elo}"
+                options.update({"SelfElo": maia_elo, "OppoElo": player_elo})
+            if temperature is not None and temperature != self.temperature:
+                options["Temperature"] = str(temperature)
+            if options:
+                self.engine.configure(options)
+            self.maia_elo = maia_elo
+            self.player_elo = player_elo
+            if temperature is not None:
+                self.temperature = temperature
+            self.maia_name = f"Maia {self.maia_elo}"
             self._pending_maia_elo = maia_elo
             self._pending_player_elo = player_elo
             self.player_color = player_color

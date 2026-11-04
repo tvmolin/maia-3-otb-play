@@ -1,82 +1,78 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#14171b">
-    <title>Play Maia</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/main.css') }}">
-    <script type="module" src="{{ url_for('static', filename='chessground/assets/app.js') }}"></script>
-  </head>
-  <body>
-    <main>
-      <h1>Play Maia</h1>
-      <div class="game-layout">
-        <section class="board-column" aria-label="Chess board">
-          <div id="board" class="cg-wrap"></div>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14171b">
+  <title>Chess ladder</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/main.css') }}">
+  <script type="module" src="{{ url_for('static', filename='chessground/assets/app.js') }}"></script>
+</head>
+
+<body>
+  <main>
+    <h1>Chess ladder</h1>
+    <div class="game-layout">
+      <section class="board-column" aria-label="Chess board">
+        <div id="board" class="cg-wrap"></div>
+      </section>
+      <aside class="sidebar">
+        <form id="setup" class="panel">
+          <label for="time-control">Time control</label>
+          <select id="time-control" name="time_control">
+            <option value="3+2">3+2</option>
+            <option value="5+0" selected>5+0</option>
+            <option value="5+3">5+3</option>
+            <option value="10+0">10+0</option>
+            <option value="20+10">20+10</option>
+            <option value="custom">Custom</option>
+          </select>
+          <div id="custom-time-control" class="custom-time-control" hidden>
+            <label for="base-time-minutes">Time per side (minutes)</label>
+            <input id="base-time-minutes" name="base_time_minutes" type="number" min="1" max="180" step="1" value="5"
+              required>
+            <label for="increment-seconds">Increment per move (seconds)</label>
+            <input id="increment-seconds" name="increment_seconds" type="number" min="0" max="60" step="1" value="0"
+              required>
+          </div>
+          <button type="submit">Find match</button>
+        </form>
+        <section class="panel clocks" aria-label="Chess clock">
+          <div id="white-clock" class="clock-display">
+            <span>White</span>
+            <time>--:--</time>
+          </div>
+          <div id="black-clock" class="clock-display">
+            <span>Black</span>
+            <time>--:--</time>
+          </div>
         </section>
-        <aside class="sidebar">
-          <form id="setup" class="panel">
-            <label for="player-color">Play as</label>
-            <select id="player-color" name="color">
-              <option value="white">White</option>
-              <option value="black">Black</option>
-            </select>
-            <label for="maia-elo">Maia Elo</label>
-            <input id="maia-elo" name="maia_elo" type="number" min="0" max="5000" value="800" required>
-            <label for="player-elo">Your Elo</label>
-            <input id="player-elo" name="player_elo" type="number" min="0" max="5000" value="760" required>
-            <label for="time-control">Time control</label>
-            <select id="time-control" name="time_control">
-              <option value="3+2">3+2</option>
-              <option value="5+0" selected>5+0</option>
-              <option value="5+3">5+3</option>
-              <option value="10+0">10+0</option>
-              <option value="20+10">20+10</option>
-              <option value="custom">Custom</option>
-            </select>
-            <div id="custom-time-control" class="custom-time-control" hidden>
-              <label for="base-time-minutes">Time per side (minutes)</label>
-              <input id="base-time-minutes" name="base_time_minutes" type="number" min="1" max="180" step="1" value="5" required>
-              <label for="increment-seconds">Increment per move (seconds)</label>
-              <input id="increment-seconds" name="increment_seconds" type="number" min="0" max="60" step="1" value="0" required>
-            </div>
-            <button type="submit">Start game</button>
-          </form>
-          <section class="panel clocks" aria-label="Chess clock">
-            <div id="white-clock" class="clock-display">
-              <span>White</span>
-              <time>--:--</time>
-            </div>
-            <div id="black-clock" class="clock-display">
-              <span>Black</span>
-              <time>--:--</time>
-            </div>
-          </section>
-          <section class="panel">
-            <div id="status" role="status" aria-live="polite">Loading game…</div>
-            <div class="actions">
-              <button id="new-game" type="button" hidden>New game</button>
-              <button id="undo" type="button" disabled>Undo</button>
-              <button id="resign" type="button" disabled>Resign</button>
-              <button id="download-pgn" type="button" hidden>Download PGN</button>
-            </div>
-          </section>
-          <section class="panel">
-            <h2>Moves</h2>
-            <ol id="move-history" aria-label="Move history"></ol>
-          </section>
-        </aside>
-      </div>
-    </main>
-    <dialog id="promotion-dialog" aria-labelledby="promotion-title">
-      <h2 id="promotion-title">Promote pawn</h2>
-      <div class="promotion-options">
-        <button type="button" data-piece="q" aria-label="Promote to queen">♕</button>
-        <button type="button" data-piece="r" aria-label="Promote to rook">♖</button>
-        <button type="button" data-piece="b" aria-label="Promote to bishop">♗</button>
-        <button type="button" data-piece="n" aria-label="Promote to knight">♘</button>
-      </div>
-    </dialog>
-  </body>
+        <section class="panel">
+          <div id="status" role="status" aria-live="polite">Loading game…</div>
+          <div class="actions">
+            <button id="new-game" type="button" hidden>Find another match</button>
+            <button id="undo" type="button" disabled>Undo</button>
+            <button id="resign" type="button" disabled>Resign</button>
+            <button id="download-pgn" type="button" hidden>Download PGN</button>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>Moves</h2>
+          <ol id="move-history" aria-label="Move history"></ol>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <dialog id="promotion-dialog" aria-labelledby="promotion-title">
+    <h2 id="promotion-title">Promote pawn</h2>
+    <div class="promotion-options">
+      <button type="button" data-piece="q" aria-label="Promote to queen">♕</button>
+      <button type="button" data-piece="r" aria-label="Promote to rook">♖</button>
+      <button type="button" data-piece="b" aria-label="Promote to bishop">♗</button>
+      <button type="button" data-piece="n" aria-label="Promote to knight">♘</button>
+    </div>
+  </dialog>
+</body>
+
 </html>

@@ -6,9 +6,6 @@ import './style.css';
 
 const boardElement = document.querySelector('#board');
 const setupForm = document.querySelector('#setup');
-const colorInput = document.querySelector('#player-color');
-const maiaEloInput = document.querySelector('#maia-elo');
-const playerEloInput = document.querySelector('#player-elo');
 const timeControlInput = document.querySelector('#time-control');
 const customTimeControl = document.querySelector('#custom-time-control');
 const baseTimeMinutesInput = document.querySelector('#base-time-minutes');
@@ -55,8 +52,6 @@ function renderState(state) {
       if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
     }
   }
-  maiaEloInput.value = state.maia_elo;
-  playerEloInput.value = state.player_elo;
   if (state.time_control) {
     timeControlInput.value = state.time_control;
     customTimeControl.hidden = state.time_control !== 'custom';
@@ -101,11 +96,15 @@ function renderState(state) {
     const reason = state.termination === 'timeout' ? 'Time out. ' : '';
     statusElement.textContent = `${reason}Game over${state.result ? ` (${state.result})` : ''}.`;
   } else if (!state.started) {
-    statusElement.textContent = 'Choose a side and start a game.';
+    statusElement.textContent = 'Choose a time control and find a match.';
   } else if (state.maia_thinking || requestPending) {
     statusElement.textContent = 'Maia is thinking…';
   } else {
-    statusElement.textContent = state.can_move ? 'Your move.' : 'Waiting for Maia.';
+    const matchSummary =
+      `You (${state.player_elo}) are ${state.player_color} vs Maia ${state.maia_elo}. `;
+    statusElement.textContent = state.can_move
+      ? `${matchSummary}Your move.`
+      : `${matchSummary}Waiting for Maia.`;
   }
 }
 
@@ -317,15 +316,12 @@ setupForm.addEventListener('submit', async (event) => {
   unlockMoveSounds();
   const submitButton = setupForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
-  statusElement.textContent = 'Starting game…';
+  statusElement.textContent = 'Finding a match…';
   try {
-    const response = await fetch('/api/start', {
+    const response = await fetch('/api/find-match', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        color: colorInput.value,
-        maia_elo: Number(maiaEloInput.value),
-        player_elo: Number(playerEloInput.value),
         time_control: timeControlInput.value,
         base_time_minutes: Number(baseTimeMinutesInput.value),
         increment_seconds: Number(incrementSecondsInput.value),

@@ -32,6 +32,17 @@ class ChessgroundAppTests(unittest.TestCase):
     def setUp(self):
         self.engine = FakeEngine()
         self.client = create_app(self.engine).test_client()
+        self.random_patches = (
+            patch("chessground_app.random.choice", return_value=chess.WHITE),
+            patch("chessground_app.random.randint", return_value=820),
+            patch("chessground_app.random.uniform", return_value=0.7),
+        )
+        for random_patch in self.random_patches:
+            random_patch.start()
+
+    def tearDown(self):
+        for random_patch in reversed(self.random_patches):
+            random_patch.stop()
 
     def test_initial_state_includes_position_and_no_legal_player_moves(self):
         response = self.client.get("/api/state")
@@ -44,16 +55,66 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertFalse(response.json["can_move"])
         self.assertEqual(response.json["destinations"], {})
 
+    def test_matchmaking_form_only_exposes_time_control_and_find_match(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Find match", response.data)
+        self.assertIn(b'id="time-control"', response.data)
+        self.assertNotIn(b'id="player-color"', response.data)
+        self.assertNotIn(b'id="maia-elo"', response.data)
+        self.assertNotIn(b'id="player-elo"', response.data)
+
     def test_start_exposes_legal_destinations(self):
-        response = self.client.post("/api/start", json={"color": "white"})
+        response = self.client.post("/api/find-match", json={"time_control": "5+0"})
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["state"]["can_move"])
         self.assertIn("e4", response.json["state"]["destinations"]["e2"])
         self.assertEqual(response.json["state"]["time_control"], "5+0")
+        self.assertEqual(response.json["state"]["player_elo"], 800)
+        self.assertEqual(response.json["state"]["maia_elo"], 820)
+        self.assertEqual(response.json["state"]["maia_temperature"], 0.7)
+        self.assertEqual(
+            self.engine.configured[-1],
+            {"SelfElo": 820, "OppoElo": 800, "Temperature": "0.7"},
+        )
         self.assertEqual(
             response.json["state"]["clock"]["remaining_ms"],
             {"white": 300_000, "black": 300_000},
+        )
+
+    def test_find_match_randomizes_color_and_maia_settings_on_the_server(self):
+        self.engine.moves = ["e4"]
+        with (
+            patch("chessground_app.random.choice", return_value=chess.BLACK) as color_picker,
+            patch("chessground_app.random.randint", return_value=900) as rating_picker,
+            patch("chessground_app.random.uniform", return_value=0.9) as temperature_picker,
+            patch.object(GameSession, "wait_for_maia_think"),
+        ):
+            response = self.client.post(
+                "/api/find-match",
+                json={
+                    "color": "white",
+                    "maia_elo": 0,
+                    "player_elo": 5000,
+                    "temperature": 5,
+                    "time_control": "5+0",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        state = response.json["state"]
+        self.assertEqual(state["player_color"], "black")
+        self.assertEqual(state["player_elo"], 800)
+        self.assertEqual(state["maia_elo"], 900)
+        self.assertEqual(state["maia_temperature"], 0.9)
+        color_picker.assert_called_once_with((chess.WHITE, chess.BLACK))
+        rating_picker.assert_called_once_with(700, 900)
+        temperature_picker.assert_called_once_with(0.5, 0.9)
+        self.assertEqual(
+            self.engine.configured[-1],
+            {"SelfElo": 900, "OppoElo": 800, "Temperature": "0.9"},
         )
 
     def test_start_supports_twenty_plus_ten_clock(self):
@@ -251,8 +312,12 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertTrue(response.json["state"]["can_move"])
 
     def test_black_start_plays_maias_opening_move(self):
-        client = create_app(FakeEngine(moves=["e4"])).test_client()
-        response = client.post("/api/start", json={"color": "black"})
+        with (
+            patch("chessground_app.random.choice", return_value=chess.BLACK),
+            patch.object(GameSession, "wait_for_maia_think"),
+        ):
+            client = create_app(FakeEngine(moves=["e4"])).test_client()
+            response = client.post("/api/find-match", json={"time_control": "5+0"})
 
         self.assertEqual(response.status_code, 200)
         state = response.json["state"]

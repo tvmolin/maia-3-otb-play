@@ -1,4 +1,5 @@
 import logging
+import random
 import threading
 import time
 import webbrowser
@@ -11,7 +12,9 @@ from maia_game import GameSession, create_engine
 
 
 MAIA_ELO = 800
-PLAYER_ELO = 760
+PLAYER_ELO = 800
+MATCH_ELO_OFFSET = 100
+MATCH_TEMPERATURE_RANGE = (0.5, 0.9)
 HOST = "127.0.0.1"
 PORT = 5001
 TIME_CONTROLS = {
@@ -181,6 +184,7 @@ def create_app(engine, board=None):
                 "ply": len(board.move_stack),
                 "maia_elo": game.maia_elo,
                 "player_elo": game.player_elo,
+                "maia_temperature": game.temperature if game.started else None,
                 "time_control": app.config.get("CHESSGROUND_TIME_CONTROL"),
                 "termination": (
                     "timeout"
@@ -227,18 +231,12 @@ def create_app(engine, board=None):
         return jsonify(state_data())
 
     @app.post("/api/start")
-    def start_game():
+    @app.post("/api/find-match")
+    def find_match():
         payload = request.get_json(silent=True)
         if not isinstance(payload, dict):
             return state_response(400, "Send the game settings as a JSON object.")
-        color = payload.get("color")
-        if isinstance(color, str):
-            color = color.lower()
-        if color not in ("white", "black"):
-            return state_response(400, "Choose either white or black.")
 
-        maia_elo = payload.get("maia_elo", game.maia_elo)
-        player_elo = payload.get("player_elo", game.player_elo)
         time_control = payload.get("time_control", "5+0")
         if not isinstance(time_control, str):
             return state_response(400, "Choose a supported time control.")
@@ -270,11 +268,18 @@ def create_app(engine, board=None):
         else:
             return state_response(400, "Choose a supported time control.")
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            color = random.choice((chess.WHITE, chess.BLACK))
+            maia_elo = random.randint(
+                PLAYER_ELO - MATCH_ELO_OFFSET,
+                PLAYER_ELO + MATCH_ELO_OFFSET,
+            )
+            temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
             try:
                 started_now = game.start(
-                    chess.WHITE if color == "white" else chess.BLACK,
+                    color,
                     maia_elo=maia_elo,
-                    player_elo=player_elo,
+                    player_elo=PLAYER_ELO,
+                    temperature=temperature,
                 )
             except ValueError as error:
                 return state_response(400, str(error))
@@ -285,6 +290,7 @@ def create_app(engine, board=None):
             if started_now:
                 base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
+                app.config["CHESSGROUND_TEMPERATURE"] = temperature
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                 clock_history.clear()
                 clock.start(
@@ -293,7 +299,7 @@ def create_app(engine, board=None):
                     chess.WHITE,
                     time.monotonic(),
                 )
-            if started_now and color == "black":
+            if started_now and color == chess.BLACK:
                 try:
                     play_maia_turn()
                 except Exception:
@@ -301,6 +307,7 @@ def create_app(engine, board=None):
                     clock.stop()
                     clock_history.clear()
                     app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                    app.config.pop("CHESSGROUND_TEMPERATURE", None)
                     app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                     app.logger.exception("Maia failed to make the opening move.")
                     return state_response(503, "The engine failed to make its opening move.")
@@ -398,6 +405,7 @@ def create_app(engine, board=None):
                 clock.stop()
                 clock_history.clear()
                 app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                app.config.pop("CHESSGROUND_TEMPERATURE", None)
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
             except ValueError as error:
                 return state_response(409, str(error))

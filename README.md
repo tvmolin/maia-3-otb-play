@@ -206,9 +206,12 @@ app:
 ```
 
 The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
-only. Select a side, ratings, and a time control, then move pieces on the board.
+only. Your rating is currently fixed at 800. Choose a time control and select
+**Find match**; each match randomly chooses your color, a Maia rating from
+700–900, and a Maia temperature from 0.5–0.9. Move pieces on the board to play.
 While Maia is thinking, you can queue one premove; it is sent only if it remains
-legal after Maia's reply.
+legal after Maia's reply. Find another match after a game to return to the
+matchmaking screen.
 The custom clock accepts 1–180 minutes per side and a 0–60 second increment.
 The backend validates moves and remains the source of truth for game state.
 The app uses the 79M model, which must be downloaded before play. Preset

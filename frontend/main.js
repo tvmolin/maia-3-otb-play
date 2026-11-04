@@ -6,7 +6,7 @@ import './style.css';
 
 const boardElement = document.querySelector('#board');
 const setupForm = document.querySelector('#setup');
-const ratingCategoryInput = document.querySelector('#rating-category');
+const timeControlInput = document.querySelector('#time-control');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
 const opponentDisplay = document.querySelector('#opponent-display');
@@ -55,8 +55,8 @@ function renderState(state) {
       if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
     }
   }
-  if (state.started) {
-    ratingCategoryInput.value = state.rating_category || 'blitz';
+  if (state.started && state.time_control) {
+    timeControlInput.value = state.time_control;
   }
   renderClocks(state.clock, state.started);
   const canMove = Boolean(state.can_move) && !requestPending;
@@ -337,7 +337,7 @@ setupForm.addEventListener('submit', async (event) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        rating_category: ratingCategoryInput.value,
+        time_control: timeControlInput.value,
       }),
     });
     const data = await readJson(response);

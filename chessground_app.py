@@ -5,7 +5,6 @@ import time
 import uuid
 import webbrowser
 from pathlib import Path
-from secrets import choice as secure_choice
 
 import chess
 from flask import Flask, jsonify, render_template, request
@@ -343,17 +342,25 @@ def create_app(engine, board=None, player_data_path=None):
 
         if any(
             field in payload
-            for field in ("time_control", "base_time_minutes", "increment_seconds")
+            for field in ("rating_category", "base_time_minutes", "increment_seconds")
         ):
             return state_response(
-                400, "Choose Blitz or Rapid; the match clock is selected from that category."
+                400, "Choose a specific Blitz or Rapid time control."
             )
-        category = payload.get("rating_category", "blitz")
-        if not isinstance(category, str) or category not in TIME_CONTROLS:
-            return state_response(400, "Choose Blitz or Rapid.")
-        time_control, time_control_values = secure_choice(
-            tuple(TIME_CONTROLS[category].items())
+        time_control = payload.get("time_control", "3+2")
+        if not isinstance(time_control, str):
+            return state_response(400, "Choose a supported time control.")
+        category = next(
+            (
+                category
+                for category, controls in TIME_CONTROLS.items()
+                if time_control in controls
+            ),
+            None,
         )
+        if category is None:
+            return state_response(400, "Choose a supported time control.")
+        time_control_values = TIME_CONTROLS[category][time_control]
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             if game.started:
                 return state_response(409, "Finish the current match before finding another.")

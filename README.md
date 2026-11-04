@@ -206,9 +206,9 @@ app:
 ```
 
 The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
-only. Your Blitz and Rapid ratings each start at 800. Choose Blitz or Rapid and
-select **Find match**; Blitz randomly uses 3+2 or 5+5, while Rapid randomly uses
-15+10 or 20+10. Each match randomly chooses your color, a Maia rating within
+only. Your Blitz and Rapid ratings each start at 800. Choose one of the four
+time controls—Blitz 3+2 or 5+5, or Rapid 15+10 or 20+10—then select
+**Find match**. Each match randomly chooses your color, a Maia rating within
 100 points of your rating in that category, and a Maia temperature from 0.5–0.9.
 Move pieces on the board to play. While Maia is thinking, you can queue one
 premove; it is sent only if it remains legal after Maia's reply. Find another

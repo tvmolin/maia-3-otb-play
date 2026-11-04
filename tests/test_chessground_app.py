@@ -44,7 +44,6 @@ class ChessgroundAppTests(unittest.TestCase):
             patch("chessground_app.random.choice", return_value=chess.WHITE),
             patch("chessground_app.random.randint", return_value=820),
             patch("chessground_app.random.uniform", return_value=0.7),
-            patch("chessground_app.secure_choice", side_effect=lambda choices: choices[-1]),
         )
         for random_patch in self.random_patches:
             random_patch.start()
@@ -69,9 +68,11 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Find match", response.data)
-        self.assertIn(b'id="rating-category"', response.data)
-        self.assertIn(b"Blitz (3+2 or 5+5)", response.data)
-        self.assertIn(b"Rapid (15+10 or 20+10)", response.data)
+        self.assertIn(b'id="time-control"', response.data)
+        self.assertIn(b'<optgroup label="Blitz">', response.data)
+        self.assertIn(b'<optgroup label="Rapid">', response.data)
+        for control in (b"3+2", b"5+5", b"15+10", b"20+10"):
+            self.assertIn(control, response.data)
         self.assertNotIn(b"Custom", response.data)
         self.assertNotIn(b'id="player-color"', response.data)
         self.assertNotIn(b'id="maia-elo"', response.data)
@@ -152,7 +153,7 @@ class ChessgroundAppTests(unittest.TestCase):
 
     def test_start_exposes_legal_destinations(self):
         response = self.client.post(
-            "/api/find-match", json={"rating_category": "blitz"}
+            "/api/find-match", json={"time_control": "5+5"}
         )
 
         self.assertEqual(response.status_code, 200)
@@ -191,7 +192,7 @@ class ChessgroundAppTests(unittest.TestCase):
                     "maia_elo": 0,
                     "player_elo": 5000,
                     "temperature": 5,
-                    "rating_category": "blitz",
+                    "time_control": "3+2",
                 },
             )
 
@@ -216,7 +217,7 @@ class ChessgroundAppTests(unittest.TestCase):
             "save_pgn_file",
             return_value=Path("match.pgn"),
         ):
-            self.client.post("/api/find-match", json={"rating_category": "blitz"})
+            self.client.post("/api/find-match", json={"time_control": "3+2"})
             response = self.client.post("/api/command", json={"command": "resign"})
             refreshed = self.client.get("/api/state")
 
@@ -247,13 +248,9 @@ class ChessgroundAppTests(unittest.TestCase):
             patch("chessground_app.random.choice", return_value=chess.WHITE),
             patch("chessground_app.random.randint", return_value=820) as rating_picker,
             patch("chessground_app.random.uniform", return_value=0.7),
-            patch(
-                "chessground_app.secure_choice",
-                side_effect=lambda choices: choices[-1],
-            ),
         ):
             next_match = restarted.post(
-                "/api/find-match", json={"rating_category": "blitz"}
+                "/api/find-match", json={"time_control": "3+2"}
             )
         self.assertEqual(next_match.json["state"]["player_elo"], 781)
         rating_picker.assert_called_once_with(681, 881)
@@ -275,7 +272,7 @@ class ChessgroundAppTests(unittest.TestCase):
         )
         response = self.client.post(
             "/api/start",
-            json={"color": "white", "rating_category": "rapid"},
+            json={"color": "white", "time_control": "20+10"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -290,20 +287,22 @@ class ChessgroundAppTests(unittest.TestCase):
             {"white": 1_200_000, "black": 1_200_000},
         )
 
-    def test_unsupported_rating_categories_are_rejected(self):
-        for category in ("custom", "bullet", "5+5", None):
-            with self.subTest(category=category):
-                response = self.client.post(
-                    "/api/find-match",
-                    json={"rating_category": category},
-                )
+    def test_unsupported_time_controls_are_rejected(self):
+        for payload in (
+            {"time_control": "custom"},
+            {"time_control": "bullet"},
+            {"time_control": "5+0"},
+            {"time_control": None},
+            {"rating_category": "blitz"},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.post("/api/find-match", json=payload)
                 self.assertEqual(response.status_code, 400)
 
     def test_explicit_clock_parameters_are_no_longer_accepted(self):
         response = self.client.post(
             "/api/find-match",
             json={
-                "rating_category": "blitz",
                 "time_control": "custom",
                 "base_time_minutes": 7,
                 "increment_seconds": 4,
@@ -320,7 +319,7 @@ class ChessgroundAppTests(unittest.TestCase):
         ):
             self.client.post(
                 "/api/start",
-                json={"color": "white", "rating_category": "blitz"},
+                json={"color": "white", "time_control": "5+5"},
             )
             now[0] = 102
             response = self.client.post(
@@ -344,7 +343,7 @@ class ChessgroundAppTests(unittest.TestCase):
         ):
             self.client.post(
                 "/api/start",
-                json={"color": "white", "rating_category": "blitz"},
+                json={"color": "white", "time_control": "1+0"},
             )
             now[0] = 2
             response = self.client.post(
@@ -372,7 +371,7 @@ class ChessgroundAppTests(unittest.TestCase):
         ):
             self.client.post(
                 "/api/start",
-                json={"color": "white", "rating_category": "blitz"},
+                json={"color": "white", "time_control": "1+0"},
             )
             response = self.client.post(
                 "/api/move",
@@ -467,7 +466,7 @@ class ChessgroundAppTests(unittest.TestCase):
                 player_data_path=self.player_data_path,
             ).test_client()
             response = client.post(
-                "/api/find-match", json={"rating_category": "blitz"}
+                "/api/find-match", json={"time_control": "3+2"}
             )
 
         self.assertEqual(response.status_code, 200)

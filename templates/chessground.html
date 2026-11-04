@@ -30,10 +30,16 @@
       </section>
       <aside class="sidebar">
         <form id="setup" class="panel">
-          <label for="rating-category">Time control</label>
-          <select id="rating-category" name="rating_category">
-            <option value="blitz" selected>Blitz (3+2 or 5+5)</option>
-            <option value="rapid">Rapid (15+10 or 20+10)</option>
+          <label for="time-control">Time control</label>
+          <select id="time-control" name="time_control">
+            <optgroup label="Blitz">
+              <option value="3+2" selected>3+2</option>
+              <option value="5+5">5+5</option>
+            </optgroup>
+            <optgroup label="Rapid">
+              <option value="15+10">15+10</option>
+              <option value="20+10">20+10</option>
+            </optgroup>
           </select>
           <button type="submit">Find match</button>
         </form>

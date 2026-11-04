@@ -45,6 +45,25 @@ const ground = Chessground(boardElement, {
   movable: { dests: new Map() },
 });
 
+function fitBoardToDevicePixels() {
+  const availableWidth = boardElement.parentElement.getBoundingClientRect().width;
+  const boardSize =
+    (Math.floor((availableWidth * window.devicePixelRatio) / 8) * 8) /
+    window.devicePixelRatio;
+  if (boardSize > 0) {
+    const roundingMargin = 0.02;
+    boardElement.style.width = `${boardSize + roundingMargin}px`;
+    boardElement.style.height = `${boardSize + roundingMargin}px`;
+  }
+}
+
+fitBoardToDevicePixels();
+if ('ResizeObserver' in window) {
+  new ResizeObserver(fitBoardToDevicePixels).observe(boardElement.parentElement);
+} else {
+  window.addEventListener('resize', fitBoardToDevicePixels);
+}
+
 function destinationsToMap(destinations = {}) {
   return new Map(
     Object.entries(destinations).map(([origin, targets]) => [origin, targets]),
@@ -53,6 +72,8 @@ function destinationsToMap(destinations = {}) {
 
 function renderState(state) {
   const previousState = currentState;
+  const boardLayoutChanged =
+    previousState && previousState.started !== state.started;
   currentState = state;
   if (
     !state.started ||
@@ -118,6 +139,10 @@ function renderState(state) {
   resignButton.disabled =
     !state.started || state.game_over || requestPending || state.maia_thinking;
   pgnButton.hidden = !state.game_over;
+  if (boardLayoutChanged) {
+    fitBoardToDevicePixels();
+    ground.redrawAll();
+  }
 
   historyElement.replaceChildren();
   for (let index = 0; index < state.history.length; index += 2) {

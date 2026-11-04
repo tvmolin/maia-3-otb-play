@@ -81,6 +81,7 @@ h1 {
 }
 
 .cg-wrap {
+  justify-self: center;
   width: 100%;
   height: auto;
   aspect-ratio: 1;

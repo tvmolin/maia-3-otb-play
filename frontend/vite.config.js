@@ -8,11 +8,15 @@ export default defineConfig({
     emptyOutDir: true,
     outDir: '../static/chessground',
     rollupOptions: {
-      input: fileURLToPath(new URL('./main.js', import.meta.url)),
+      input: {
+        main: fileURLToPath(new URL('./main.js', import.meta.url)),
+        profile: fileURLToPath(new URL('./profile.js', import.meta.url)),
+      },
       output: {
         assetFileNames: 'assets/[name][extname]',
         chunkFileNames: 'assets/[name].js',
-        entryFileNames: 'assets/app.js',
+        entryFileNames: (chunk) =>
+          chunk.name === 'main' ? 'assets/app.js' : 'assets/[name].js',
       },
     },
   },

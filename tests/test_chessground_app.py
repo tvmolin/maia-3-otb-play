@@ -111,6 +111,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b">800</strong>", response.data)
         self.assertIn(b"No matches yet", response.data)
         self.assertIn(b"Back to game", response.data)
+        self.assertIn(b"assets/profile.js", response.data)
 
     def test_profile_shows_rating_progress_and_newest_match_first(self):
         ladder = self.client.application.config["CHESSGROUND_LADDER"]
@@ -149,6 +150,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"class=\"rating-chart-line\"", response.data)
         self.assertIn(b"TacticalLlama4821 (900)", response.data)
+        self.assertIn(b'data-local-time datetime="2026-11-04T12:00:00Z"', response.data)
         self.assertIn(b"Maia (800)", response.data)
         self.assertIn(b"5+5", response.data)
         self.assertLess(

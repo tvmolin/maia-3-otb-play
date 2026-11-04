@@ -62,7 +62,7 @@
             <tbody>
               {% for match in matches %}
               <tr>
-                <td><time datetime="{{ match.finished_at }}">{{ match.finished_at }}</time></td>
+                <td><time data-local-time datetime="{{ match.finished_at }}">{{ match.finished_at }}</time></td>
                 <td>{{ match.opponent_name|default("Maia") }} ({{ match.maia_elo }})</td>
                 <td>{{ match.outcome|capitalize }}</td>
                 <td>{{ match.time_control }}</td>
@@ -82,6 +82,7 @@
       </section>
     </div>
   </main>
+  <script type="module" src="{{ url_for('static', filename='chessground/assets/profile.js') }}"></script>
 </body>
 
 </html>

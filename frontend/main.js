@@ -6,10 +6,7 @@ import './style.css';
 
 const boardElement = document.querySelector('#board');
 const setupForm = document.querySelector('#setup');
-const timeControlInput = document.querySelector('#time-control');
-const customTimeControl = document.querySelector('#custom-time-control');
-const baseTimeMinutesInput = document.querySelector('#base-time-minutes');
-const incrementSecondsInput = document.querySelector('#increment-seconds');
+const ratingCategoryInput = document.querySelector('#rating-category');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
 const opponentDisplay = document.querySelector('#opponent-display');
@@ -58,13 +55,8 @@ function renderState(state) {
       if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
     }
   }
-  if (state.time_control) {
-    timeControlInput.value = state.time_control;
-    customTimeControl.hidden = state.time_control !== 'custom';
-  }
-  if (state.clock.base_seconds) {
-    baseTimeMinutesInput.value = state.clock.base_seconds / 60;
-    incrementSecondsInput.value = state.clock.increment_seconds;
+  if (state.started) {
+    ratingCategoryInput.value = state.rating_category || 'blitz';
   }
   renderClocks(state.clock, state.started);
   const canMove = Boolean(state.can_move) && !requestPending;
@@ -345,9 +337,7 @@ setupForm.addEventListener('submit', async (event) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        time_control: timeControlInput.value,
-        base_time_minutes: Number(baseTimeMinutesInput.value),
-        increment_seconds: Number(incrementSecondsInput.value),
+        rating_category: ratingCategoryInput.value,
       }),
     });
     const data = await readJson(response);
@@ -358,10 +348,6 @@ setupForm.addEventListener('submit', async (event) => {
   } finally {
     submitButton.disabled = false;
   }
-});
-
-timeControlInput.addEventListener('change', () => {
-  customTimeControl.hidden = timeControlInput.value !== 'custom';
 });
 
 promotionDialog.addEventListener('click', (event) => {

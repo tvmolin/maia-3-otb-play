@@ -30,23 +30,11 @@
       </section>
       <aside class="sidebar">
         <form id="setup" class="panel">
-          <label for="time-control">Time control</label>
-          <select id="time-control" name="time_control">
-            <option value="3+2">3+2</option>
-            <option value="5+0" selected>5+0</option>
-            <option value="5+3">5+3</option>
-            <option value="10+0">10+0</option>
-            <option value="20+10">20+10</option>
-            <option value="custom">Custom</option>
+          <label for="rating-category">Time control</label>
+          <select id="rating-category" name="rating_category">
+            <option value="blitz" selected>Blitz (3+2 or 5+5)</option>
+            <option value="rapid">Rapid (15+10 or 20+10)</option>
           </select>
-          <div id="custom-time-control" class="custom-time-control" hidden>
-            <label for="base-time-minutes">Time per side (minutes)</label>
-            <input id="base-time-minutes" name="base_time_minutes" type="number" min="1" max="180" step="1" value="5"
-              required>
-            <label for="increment-seconds">Increment per move (seconds)</label>
-            <input id="increment-seconds" name="increment_seconds" type="number" min="0" max="60" step="1" value="0"
-              required>
-          </div>
           <button type="submit">Find match</button>
         </form>
         <section class="panel clocks" aria-label="Chess clock">

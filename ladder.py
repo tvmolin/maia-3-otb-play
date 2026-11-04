@@ -6,6 +6,7 @@ from pathlib import Path
 DEFAULT_PLAYER_ELO = 800
 K_FACTOR = 40
 MAX_PLAYER_ELO = 5000
+RATING_CATEGORIES = ("blitz", "rapid")
 OPPONENT_ADJECTIVES = (
     "Blunder",
     "Bouncing",
@@ -42,16 +43,25 @@ class LadderStore:
         if self.path.exists():
             data = json.loads(self.path.read_text(encoding="utf-8"))
             self._validate_data(data)
-            self.player_elo = data["player_elo"]
+            self.ratings = data["ratings"]
             self.matches = data["matches"]
         else:
-            self.player_elo = initial_elo
-            self.matches = []
+            self.ratings = {category: initial_elo for category in RATING_CATEGORIES}
+            self.matches = {category: [] for category in RATING_CATEGORIES}
+
+    def rating_for(self, category):
+        self._validate_category(category)
+        return self.ratings[category]
+
+    def matches_for(self, category):
+        self._validate_category(category)
+        return self.matches[category]
 
     def generate_opponent_name(self):
         used_names = {
             match.get("opponent_name")
-            for match in self.matches
+            for matches in self.matches.values()
+            for match in matches
             if isinstance(match.get("opponent_name"), str)
         }
         while True:
@@ -64,28 +74,34 @@ class LadderStore:
                 return name
 
     def record_match(self, match):
-        for existing in self.matches:
-            if existing["match_id"] == match["match_id"]:
-                return existing
+        category = match.get("rating_category")
+        self._validate_category(category)
+        for category_matches in self.matches.values():
+            for existing in category_matches:
+                if existing["match_id"] == match["match_id"]:
+                    return existing
 
+        player_elo = self.ratings[category]
         player_score = self._player_score(match["result"], match["player_color"])
         expected_score = 1 / (
-            1 + 10 ** ((match["maia_elo"] - self.player_elo) / 400)
+            1 + 10 ** ((match["maia_elo"] - player_elo) / 400)
         )
-        new_elo = round(self.player_elo + K_FACTOR * (player_score - expected_score))
+        new_elo = round(player_elo + K_FACTOR * (player_score - expected_score))
         new_elo = min(MAX_PLAYER_ELO, max(0, new_elo))
         record = {
             **match,
-            "player_elo_before": self.player_elo,
+            "player_elo_before": player_elo,
             "player_elo_after": new_elo,
-            "rating_change": new_elo - self.player_elo,
+            "rating_change": new_elo - player_elo,
             "score": player_score,
             "outcome": (
                 "win" if player_score == 1 else "loss" if player_score == 0 else "draw"
             ),
             "k_factor": K_FACTOR,
         }
-        data = {"player_elo": new_elo, "matches": [*self.matches, record]}
+        ratings = {**self.ratings, category: new_elo}
+        matches = {**self.matches, category: [*self.matches[category], record]}
+        data = {"ratings": ratings, "matches": matches}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         temporary_path = self.path.with_suffix(self.path.suffix + ".tmp")
         try:
@@ -98,9 +114,14 @@ class LadderStore:
             if temporary_path.exists():
                 temporary_path.unlink()
             raise
-        self.player_elo = new_elo
-        self.matches = data["matches"]
+        self.ratings = ratings
+        self.matches = matches
         return record
+
+    @staticmethod
+    def _validate_category(category):
+        if category not in RATING_CATEGORIES:
+            raise ValueError("Rating category must be blitz or rapid.")
 
     @staticmethod
     def _player_score(result, player_color):
@@ -117,17 +138,27 @@ class LadderStore:
     def _validate_data(data):
         if not isinstance(data, dict):
             raise ValueError("Ladder data must be a JSON object.")
-        player_elo = data.get("player_elo")
+        ratings = data.get("ratings")
         matches = data.get("matches")
         if (
-            isinstance(player_elo, bool)
-            or not isinstance(player_elo, int)
-            or not 0 <= player_elo <= MAX_PLAYER_ELO
-            or not isinstance(matches, list)
+            not isinstance(ratings, dict)
+            or set(ratings) != set(RATING_CATEGORIES)
             or any(
-                not isinstance(match, dict)
-                or not isinstance(match.get("match_id"), str)
-                for match in matches
+                isinstance(rating, bool)
+                or not isinstance(rating, int)
+                or not 0 <= rating <= MAX_PLAYER_ELO
+                for rating in ratings.values()
+            )
+            or not isinstance(matches, dict)
+            or set(matches) != set(RATING_CATEGORIES)
+            or any(
+                not isinstance(category_matches, list)
+                or any(
+                    not isinstance(match, dict)
+                    or not isinstance(match.get("match_id"), str)
+                    for match in category_matches
+                )
+                for category_matches in matches.values()
             )
         ):
             raise ValueError("Ladder data has an invalid player rating or match history.")

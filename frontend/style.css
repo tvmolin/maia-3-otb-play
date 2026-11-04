@@ -187,6 +187,26 @@ cg-board {
   font-variant-numeric: tabular-nums;
 }
 
+.profile-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.profile-tabs a {
+  padding: 9px 16px;
+  border: 1px solid #424c58;
+  border-radius: 7px;
+  color: #aab4c0;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.profile-tabs a[aria-current="page"] {
+  border-color: #7ab7ff;
+  background: #24364a;
+  color: #e6edf3;
+}
+
 .rating-chart {
   display: block;
   width: 100%;
@@ -259,21 +279,11 @@ cg-board {
   gap: 10px;
 }
 
-#custom-time-control {
-  display: grid;
-  gap: 10px;
-}
-
-#custom-time-control[hidden] {
-  display: none;
-}
-
 #setup label {
   font-weight: 600;
 }
 
 #setup select,
-#setup input,
 button {
   min-height: 40px;
   padding: 8px 10px;

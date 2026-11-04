@@ -16,14 +16,20 @@
       <a class="header-link" href="{{ url_for('index') }}">Back to game</a>
     </header>
     <div class="profile-layout">
+      <nav class="profile-tabs" aria-label="Rating category">
+        <a href="{{ url_for('profile', category='blitz') }}"
+          {% if category == "blitz" %}aria-current="page"{% endif %}>Blitz</a>
+        <a href="{{ url_for('profile', category='rapid') }}"
+          {% if category == "rapid" %}aria-current="page"{% endif %}>Rapid</a>
+      </nav>
       <section class="panel" aria-labelledby="rating-title">
-        <h2 id="rating-title">Rating progress</h2>
+        <h2 id="rating-title">{{ category|capitalize }} rating progress</h2>
         <div class="profile-summary">
-          <span>Current rating</span>
+          <span>{{ category|capitalize }} rating</span>
           <strong>{{ player_elo }}</strong>
         </div>
         <svg class="rating-chart" viewBox="0 0 800 250" role="img"
-          aria-label="Rating progress from {{ chart_min|round|int }} to {{ chart_max|round|int }}">
+          aria-label="{{ category|capitalize }} rating progress from {{ chart_min|round|int }} to {{ chart_max|round|int }}">
           {% for tick in rating_ticks %}
           <line class="rating-chart-grid" x1="58" x2="780" y1="{{ tick.y }}" y2="{{ tick.y }}"></line>
           <text class="rating-chart-axis-label" x="50" y="{{ tick.y + 5 }}" text-anchor="end">{{ tick.rating }}</text>
@@ -40,7 +46,7 @@
         </svg>
       </section>
       <section class="panel" aria-labelledby="history-title">
-        <h2 id="history-title">Match history</h2>
+        <h2 id="history-title">{{ category|capitalize }} match history</h2>
         <div class="profile-table-wrap">
           <table class="profile-table">
             <thead>

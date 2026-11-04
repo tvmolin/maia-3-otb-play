@@ -5,11 +5,12 @@ import time
 import uuid
 import webbrowser
 from pathlib import Path
+from secrets import choice as secure_choice
 
 import chess
 from flask import Flask, jsonify, render_template, request
 
-from ladder import DEFAULT_PLAYER_ELO, LadderStore
+from ladder import DEFAULT_PLAYER_ELO, RATING_CATEGORIES, LadderStore
 from maia_game import GameSession, create_engine
 
 
@@ -20,11 +21,14 @@ MATCH_TEMPERATURE_RANGE = (0.5, 0.9)
 HOST = "127.0.0.1"
 PORT = 5001
 TIME_CONTROLS = {
-    "3+2": (180, 2),
-    "5+0": (300, 0),
-    "5+3": (300, 3),
-    "10+0": (600, 0),
-    "20+10": (1200, 10),
+    "blitz": {
+        "3+2": (180, 2),
+        "5+5": (300, 5),
+    },
+    "rapid": {
+        "15+10": (900, 10),
+        "20+10": (1200, 10),
+    },
 }
 
 
@@ -100,13 +104,13 @@ def create_app(engine, board=None, player_data_path=None):
     app = Flask(__name__)
     ladder = LadderStore(
         player_data_path
-        or Path(__file__).resolve().parent / "games" / "ladder.json"
+        or Path(__file__).resolve().parent / "games" / "ladder-ratings.json"
     )
     game = GameSession(
         engine,
         player_color=chess.WHITE,
         player_name="Devonty",
-        player_elo=ladder.player_elo,
+        player_elo=ladder.rating_for("blitz"),
         maia_elo=MAIA_ELO,
         board=board,
         started=False,
@@ -131,13 +135,10 @@ def create_app(engine, board=None, player_data_path=None):
                 "result": game.result,
                 "player_color": game.player_color_name,
                 "opponent_name": game.maia_name,
+                "rating_category": app.config["CHESSGROUND_RATING_CATEGORY"],
                 "maia_elo": game.maia_elo,
                 "temperature": game.temperature,
-                "time_control": (
-                    f"{clock.base_seconds // 60}+{clock.increment_seconds}"
-                    if app.config["CHESSGROUND_TIME_CONTROL"] == "custom"
-                    else app.config["CHESSGROUND_TIME_CONTROL"]
-                ),
+                "time_control": app.config["CHESSGROUND_TIME_CONTROL"],
                 "plies": len(game.board.move_stack),
                 "pgn_file": pgn_path.name,
             }
@@ -215,7 +216,13 @@ def create_app(engine, board=None, player_data_path=None):
                 "ply": len(board.move_stack),
                 "maia_elo": game.maia_elo,
                 "maia_name": game.maia_name,
-                "player_elo": game.player_elo if game.started else ladder.player_elo,
+                "player_elo": game.player_elo if game.started else ladder.rating_for(
+                    app.config.get("CHESSGROUND_RATING_CATEGORY", "blitz")
+                ),
+                "rating_category": app.config.get(
+                    "CHESSGROUND_RATING_CATEGORY", "blitz"
+                ),
+                "player_ratings": dict(ladder.ratings),
                 "rating_change": (
                     app.config["CHESSGROUND_RATING_RECORD"]["rating_change"]
                     if app.config.get("CHESSGROUND_RATING_RECORD")
@@ -270,9 +277,12 @@ def create_app(engine, board=None, player_data_path=None):
 
     @app.get("/profile")
     def profile():
+        category = request.args.get("category", "blitz")
+        if category not in RATING_CATEGORIES:
+            return "Choose blitz or rapid.", 404
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
-            matches = list(ladder.matches)
-            player_elo = ladder.player_elo
+            matches = list(ladder.matches_for(category))
+            player_elo = ladder.rating_for(category)
 
         ratings = [matches[0]["player_elo_before"]] if matches else [player_elo]
         ratings.extend(match["player_elo_after"] for match in matches)
@@ -311,6 +321,7 @@ def create_app(engine, board=None, player_data_path=None):
         ]
         return render_template(
             "profile.html",
+            category=category,
             player_elo=player_elo,
             matches=reversed(matches),
             rating_points=rating_points,
@@ -330,43 +341,27 @@ def create_app(engine, board=None, player_data_path=None):
         if not isinstance(payload, dict):
             return state_response(400, "Send the game settings as a JSON object.")
 
-        time_control = payload.get("time_control", "5+0")
-        if not isinstance(time_control, str):
-            return state_response(400, "Choose a supported time control.")
-        if time_control == "custom":
-            base_time_minutes = payload.get("base_time_minutes")
-            increment_seconds = payload.get("increment_seconds")
-            if (
-                isinstance(base_time_minutes, bool)
-                or not isinstance(base_time_minutes, int)
-                or not 1 <= base_time_minutes <= 180
-            ):
-                return state_response(
-                    400, "Custom base time must be a whole number from 1 to 180 minutes."
-                )
-            if (
-                isinstance(increment_seconds, bool)
-                or not isinstance(increment_seconds, int)
-                or not 0 <= increment_seconds <= 60
-            ):
-                return state_response(
-                    400, "Custom increment must be a whole number from 0 to 60 seconds."
-                )
-            time_control_values = (
-                base_time_minutes * 60,
-                increment_seconds,
+        if any(
+            field in payload
+            for field in ("time_control", "base_time_minutes", "increment_seconds")
+        ):
+            return state_response(
+                400, "Choose Blitz or Rapid; the match clock is selected from that category."
             )
-        elif time_control in TIME_CONTROLS:
-            time_control_values = TIME_CONTROLS[time_control]
-        else:
-            return state_response(400, "Choose a supported time control.")
+        category = payload.get("rating_category", "blitz")
+        if not isinstance(category, str) or category not in TIME_CONTROLS:
+            return state_response(400, "Choose Blitz or Rapid.")
+        time_control, time_control_values = secure_choice(
+            tuple(TIME_CONTROLS[category].items())
+        )
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             if game.started:
                 return state_response(409, "Finish the current match before finding another.")
             color = random.choice((chess.WHITE, chess.BLACK))
+            player_elo = ladder.rating_for(category)
             maia_elo = random.randint(
-                max(0, ladder.player_elo - MATCH_ELO_OFFSET),
-                min(5000, ladder.player_elo + MATCH_ELO_OFFSET),
+                max(0, player_elo - MATCH_ELO_OFFSET),
+                min(5000, player_elo + MATCH_ELO_OFFSET),
             )
             temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
             opponent_name = ladder.generate_opponent_name()
@@ -374,7 +369,7 @@ def create_app(engine, board=None, player_data_path=None):
                 started_now = game.start(
                     color,
                     maia_elo=maia_elo,
-                    player_elo=ladder.player_elo,
+                    player_elo=player_elo,
                     temperature=temperature,
                 )
             except ValueError as error:
@@ -386,6 +381,7 @@ def create_app(engine, board=None, player_data_path=None):
             if started_now:
                 game.maia_name = opponent_name
                 base_seconds, increment_seconds = time_control_values
+                app.config["CHESSGROUND_RATING_CATEGORY"] = category
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
                 app.config["CHESSGROUND_TEMPERATURE"] = temperature
                 app.config["CHESSGROUND_MATCH_ID"] = str(uuid.uuid4())
@@ -406,6 +402,7 @@ def create_app(engine, board=None, player_data_path=None):
                     clock.stop()
                     clock_history.clear()
                     app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                    app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
                     app.config.pop("CHESSGROUND_TEMPERATURE", None)
                     app.config.pop("CHESSGROUND_MATCH_ID", None)
                     app.config.pop("CHESSGROUND_RATING_RECORD", None)
@@ -506,6 +503,7 @@ def create_app(engine, board=None, player_data_path=None):
                 clock.stop()
                 clock_history.clear()
                 app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
                 app.config.pop("CHESSGROUND_TEMPERATURE", None)
                 app.config.pop("CHESSGROUND_MATCH_ID", None)
                 app.config.pop("CHESSGROUND_RATING_RECORD", None)

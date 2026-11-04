@@ -13,12 +13,20 @@ class LadderStoreTests(unittest.TestCase):
         self.path = Path(self.temp_dir.name) / "ladder.json"
         self.store = LadderStore(self.path)
 
-    def match(self, result, maia_elo=800, player_color="white", match_id="match-1"):
+    def match(
+        self,
+        result,
+        maia_elo=800,
+        player_color="white",
+        match_id="match-1",
+        rating_category="blitz",
+    ):
         return {
             "match_id": match_id,
             "result": result,
             "maia_elo": maia_elo,
             "player_color": player_color,
+            "rating_category": rating_category,
         }
 
     def test_equal_rating_win_and_loss_change_rating_by_twenty(self):
@@ -53,16 +61,29 @@ class LadderStoreTests(unittest.TestCase):
 
         self.assertEqual(self.store.record_match(match), record)
         persisted = json.loads(self.path.read_text(encoding="utf-8"))
-        self.assertEqual(persisted["player_elo"], 820)
-        self.assertEqual(len(persisted["matches"]), 1)
+        self.assertEqual(persisted["ratings"], {"blitz": 820, "rapid": 800})
+        self.assertEqual(len(persisted["matches"]["blitz"]), 1)
 
         reloaded = LadderStore(self.path)
-        self.assertEqual(reloaded.player_elo, 820)
-        self.assertEqual(reloaded.matches, [record])
+        self.assertEqual(reloaded.rating_for("blitz"), 820)
+        self.assertEqual(reloaded.rating_for("rapid"), 800)
+        self.assertEqual(reloaded.matches_for("blitz"), [record])
+
+    def test_blitz_and_rapid_ratings_are_independent(self):
+        self.store.record_match(self.match("1-0"))
+        rapid = self.store.record_match(
+            self.match("1-0", rating_category="rapid", match_id="rapid-1")
+        )
+
+        self.assertEqual(self.store.rating_for("blitz"), 820)
+        self.assertEqual(self.store.rating_for("rapid"), 820)
+        self.assertEqual(rapid["rating_category"], "rapid")
+        self.assertEqual(len(self.store.matches_for("blitz")), 1)
+        self.assertEqual(len(self.store.matches_for("rapid")), 1)
 
     def test_generated_usernames_are_playful_and_unique_to_match_history(self):
         first = self.store.generate_opponent_name()
-        self.store.matches.append({"opponent_name": first})
+        self.store.matches["rapid"].append({"opponent_name": first})
         second = self.store.generate_opponent_name()
 
         self.assertRegex(first, r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$")

@@ -206,22 +206,23 @@ app:
 ```
 
 The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
-only. Your rating starts at 800. Choose a time control and select
-**Find match**; each match randomly chooses your color, a Maia rating from
-700–900, and a Maia temperature from 0.5–0.9. Move pieces on the board to play.
-While Maia is thinking, you can queue one premove; it is sent only if it remains
-legal after Maia's reply. Find another match after a game to return to the
-matchmaking screen. Finished match results and
-rating changes (K=40) are stored in `games/ladder.json` and persist between
-app runs. Each match gets a randomly generated, unique Maia username, shown
-alongside the board and saved in match history and PGN. Draws count as half a
-point.
-Open **Profile** to view your rating graph and match history.
-The custom clock accepts 1–180 minutes per side and a 0–60 second increment.
-The backend validates moves and remains the source of truth for game state.
+only. Your Blitz and Rapid ratings each start at 800. Choose Blitz or Rapid and
+select **Find match**; Blitz randomly uses 3+2 or 5+5, while Rapid randomly uses
+15+10 or 20+10. Each match randomly chooses your color, a Maia rating within
+100 points of your rating in that category, and a Maia temperature from 0.5–0.9.
+Move pieces on the board to play. While Maia is thinking, you can queue one
+premove; it is sent only if it remains legal after Maia's reply. Find another
+match after a game to return to the matchmaking screen. Finished match results
+and category-specific rating changes (K=40) are stored in
+`games/ladder-ratings.json` and persist between app runs. Each match gets a
+randomly generated, unique Maia username, shown alongside the board and saved
+in match history and PGN. Draws count as half a point.
+Open **Profile** to switch between your Blitz and Rapid rating graphs and match
+histories. The backend validates moves and remains the source of truth for game
+state.
 The app uses the 79M model, which must be downloaded before play. Preset
-clocks are 3+2, 5+0, 5+3, 10+0, and 20+10. Both clocks are enforced by the
-server, including Maia's engine and think time.
+The available game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
+Both clocks are enforced by the server, including Maia's engine and think time.
 
 The Chessground interface uses the Tatiana chess-piece artwork by sadsnake1,
 from [Lichess](https://github.com/lichess-org/lila/tree/master/public/piece/tatiana),

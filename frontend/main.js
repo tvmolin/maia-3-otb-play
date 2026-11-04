@@ -27,6 +27,12 @@ const promotionDialog = document.querySelector('#promotion-dialog');
 const clocksPanel = document.querySelector('#clocks-panel');
 const actionsPanel = document.querySelector('#actions-panel');
 const movesPanel = document.querySelector('#moves-panel');
+const resultSummary = document.querySelector('#result-summary');
+const resultIcon = document.querySelector('#result-icon');
+const resultCategory = document.querySelector('#result-category');
+const resultTitle = document.querySelector('#result-title');
+const resultDetail = document.querySelector('#result-detail');
+const resultRating = document.querySelector('#result-rating');
 const newGameButton = document.querySelector('#new-game');
 const undoButton = document.querySelector('#undo');
 const resignButton = document.querySelector('#resign');
@@ -76,6 +82,31 @@ function destinationsToMap(destinations = {}) {
   );
 }
 
+function getPlayerOutcome(state) {
+  if (state.rating_outcome) return state.rating_outcome;
+  if (!state.game_over || !state.result) return null;
+  if (state.result === '1/2-1/2') return 'draw';
+  const whiteWon = state.result === '1-0';
+  const playerWon = (state.player_color === 'white') === whiteWon;
+  return playerWon ? 'win' : 'loss';
+}
+
+function getResultDetail(state, outcome) {
+  if (state.termination === 'timeout') {
+    if (outcome === 'draw') return 'Time expired, but neither side had enough material to win.';
+    return outcome === 'win' ? 'Maia ran out of time.' : 'Your clock ran out.';
+  }
+  if (state.termination === 'resignation') {
+    return outcome === 'loss' ? 'You resigned. There is always another game.' : 'The game ended by resignation.';
+  }
+  if (state.termination === 'checkmate') {
+    return outcome === 'win' ? 'Checkmate! A brilliant finish.' : 'Checkmate. Maia found the winning line.';
+  }
+  if (state.termination === 'stalemate') return 'No legal moves remain, and the game is drawn.';
+  if (outcome === 'draw') return 'A hard-fought game ends level.';
+  return 'The game is complete.';
+}
+
 function renderState(state) {
   const previousState = currentState;
   const boardLayoutChanged =
@@ -117,6 +148,23 @@ function renderState(state) {
   opponentRating.textContent = state.started ? `(${state.maia_elo})` : '';
   playerName.textContent = state.player_name || 'You';
   playerRating.textContent = state.started ? `(${state.player_elo})` : '';
+  const playerOutcome = getPlayerOutcome(state);
+  playerRating.classList.toggle(
+    'rating-winner',
+    state.game_over && playerOutcome === 'win',
+  );
+  playerRating.classList.toggle(
+    'rating-loser',
+    state.game_over && playerOutcome === 'loss',
+  );
+  opponentRating.classList.toggle(
+    'rating-winner',
+    state.game_over && playerOutcome === 'loss',
+  );
+  opponentRating.classList.toggle(
+    'rating-loser',
+    state.game_over && playerOutcome === 'win',
+  );
   ground.set({
     fen: position.fen,
     orientation: state.player_color || 'white',
@@ -148,6 +196,25 @@ function renderState(state) {
   resignButton.disabled =
     !state.started || state.game_over || requestPending || state.maia_thinking;
   copyPgnButton.hidden = !state.game_over;
+  newGameButton.textContent = state.game_over ? 'Play again' : 'End match';
+  resultSummary.hidden = !state.game_over;
+  if (state.game_over) {
+    resultSummary.dataset.outcome = playerOutcome || 'draw';
+    resultIcon.textContent =
+      playerOutcome === 'win' ? '♔' : playerOutcome === 'loss' ? '♟' : '½';
+    resultCategory.textContent = state.rating_category || '';
+    resultTitle.textContent =
+      playerOutcome === 'win'
+        ? 'Victory!'
+        : playerOutcome === 'loss'
+          ? 'Defeat'
+          : 'Draw';
+    resultDetail.textContent = getResultDetail(state, playerOutcome);
+    resultRating.textContent =
+      state.rating_change === null
+        ? `Rating ${state.player_elo}`
+        : `${state.rating_change > 0 ? '+' : ''}${state.rating_change} rating · ${state.player_elo}`;
+  }
   if (!state.game_over) pgnFallback.hidden = true;
   if (boardLayoutChanged) {
     fitBoardToDevicePixels();
@@ -193,19 +260,7 @@ function renderState(state) {
   if (reviewing) {
     statusElement.textContent = `Reviewing move ${activePly} of ${state.ply}.`;
   } else if (state.game_over) {
-    const reason = state.termination === 'timeout' ? 'Time out. ' : '';
-    const outcome =
-      state.rating_outcome === 'win'
-        ? 'Win'
-        : state.rating_outcome === 'loss'
-          ? 'Loss'
-          : 'Draw';
-    const ratingUpdate =
-      state.rating_change === null
-        ? ''
-        : ` ${outcome}: ${state.rating_change > 0 ? '+' : ''}${state.rating_change} rating (${state.player_elo}).`;
-    statusElement.textContent =
-      `${reason}Game over${state.result ? ` (${state.result})` : ''}.${ratingUpdate}`;
+    statusElement.textContent = `Final score: ${state.result || '—'}`;
   } else if (!state.started) {
     statusElement.textContent = 'Choose a time control and find a match.';
   } else if (state.maia_thinking || requestPending) {

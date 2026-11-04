@@ -79,6 +79,9 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertNotIn(b'id="player-elo"', response.data)
         self.assertIn(b'id="opponent-display"', response.data)
         self.assertIn(b'id="player-display"', response.data)
+        self.assertIn(b'id="result-summary"', response.data)
+        self.assertIn(b'id="result-title"', response.data)
+        self.assertIn(b'id="result-rating"', response.data)
         self.assertIn(b'id="clocks-panel"', response.data)
         self.assertIn(b'id="actions-panel" class="panel" hidden', response.data)
         self.assertIn(b'id="moves-panel" class="panel" hidden', response.data)
@@ -240,6 +243,8 @@ class ChessgroundAppTests(unittest.TestCase):
         state = response.json["state"]
         self.assertEqual(state["player_elo"], 781)
         self.assertEqual(state["rating_change"], -19)
+        self.assertEqual(state["rating_outcome"], "loss")
+        self.assertEqual(state["termination"], "resignation")
         self.assertEqual(refreshed.json["player_elo"], 781)
         ladder = self.client.application.config["CHESSGROUND_LADDER"]
         self.assertEqual(len(ladder.matches_for("blitz")), 1)

@@ -78,6 +78,15 @@ h1 {
   color: #aab4c0;
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.board-player-rating.rating-winner {
+  color: #84d69a;
+}
+
+.board-player-rating.rating-loser {
+  color: #ff8585;
 }
 
 .cg-wrap {
@@ -327,6 +336,89 @@ button:disabled {
   color: #aab4c0;
 }
 
+.result-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #42505d;
+  border-radius: 9px;
+  background: linear-gradient(120deg, #242b34, #1b2027);
+}
+
+.result-summary[data-outcome="win"] {
+  border-color: #3d7650;
+  background: linear-gradient(120deg, #1d3828, #1c2525);
+}
+
+.result-summary[data-outcome="loss"] {
+  border-color: #7e4245;
+  background: linear-gradient(120deg, #3a2226, #252126);
+}
+
+.result-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: #39434e;
+  color: #d3dae2;
+  font-size: 1.65rem;
+  line-height: 1;
+}
+
+.result-summary[data-outcome="win"] .result-icon {
+  background: #2a603c;
+  color: #baf2c7;
+}
+
+.result-summary[data-outcome="loss"] .result-icon {
+  background: #703b3e;
+  color: #ffd1d1;
+}
+
+.result-copy {
+  min-width: 0;
+}
+
+.result-category {
+  color: #aab4c0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.result-copy h2 {
+  margin: 2px 0;
+  font-size: 1.25rem;
+}
+
+.result-copy p {
+  margin: 0;
+  color: #c1c9d2;
+  font-size: 0.88rem;
+}
+
+.result-rating {
+  color: #aab4c0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.result-summary[data-outcome="win"] .result-rating {
+  color: #84d69a;
+}
+
+.result-summary[data-outcome="loss"] .result-rating {
+  color: #ff8585;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -427,5 +519,14 @@ button:disabled {
 
   .game-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .result-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .result-rating {
+    grid-column: 2;
+    text-align: left;
   }
 }

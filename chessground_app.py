@@ -163,6 +163,14 @@ def create_app(engine, board=None, player_data_path=None):
             if game.is_game_over:
                 save_finished_game()
             board = game.board
+            board_outcome = board.outcome()
+            termination = None
+            if app.config.get("CHESSGROUND_TIMEOUT_LOSER"):
+                termination = "timeout"
+            elif game.final_result is not None:
+                termination = "resignation"
+            elif board_outcome:
+                termination = board_outcome.termination.name.lower()
             can_move = (
                 game.started
                 and not game.is_game_over
@@ -273,11 +281,7 @@ def create_app(engine, board=None, player_data_path=None):
                 ),
                 "maia_temperature": game.temperature if game.started else None,
                 "time_control": app.config.get("CHESSGROUND_TIME_CONTROL"),
-                "termination": (
-                    "timeout"
-                    if app.config.get("CHESSGROUND_TIMEOUT_LOSER")
-                    else None
-                ),
+                "termination": termination,
                 "clock": clock.data(now),
             }
 

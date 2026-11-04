@@ -55,6 +55,13 @@ cg-board {
   opacity: 1;
 }
 
+.cg-wrap.orientation-white coords.ranks coord,
+.cg-wrap.orientation-black coords.ranks coord,
+.cg-wrap.orientation-white coords.files coord,
+.cg-wrap.orientation-black coords.files coord {
+  color: #111;
+}
+
 .cg-wrap piece.pawn.white { background-image: url('./pieces/tatiana/wP.svg'); }
 .cg-wrap piece.knight.white { background-image: url('./pieces/tatiana/wN.svg'); }
 .cg-wrap piece.bishop.white { background-image: url('./pieces/tatiana/wB.svg'); }

@@ -133,6 +133,16 @@ function renderState(state) {
     for (const move of newEngineMoves) {
       if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
     }
+    if (
+      previousState.started &&
+      state.started &&
+      state.ply > previousState.ply &&
+      state.positions
+        ?.slice(previousState.ply + 1, state.ply + 1)
+        .some((position) => position.check)
+    ) {
+      playCheckSound();
+    }
   }
   if (state.started && state.time_control) {
     timeControlInput.value = state.time_control;
@@ -155,6 +165,15 @@ function renderState(state) {
   playerName.textContent = state.player_name || 'You';
   playerRating.textContent = state.started ? `(${state.player_elo})` : '';
   const playerOutcome = getPlayerOutcome(state);
+  if (previousState && !previousState.started && state.started) {
+    playNewMatchSound();
+  } else if (
+    previousState?.started &&
+    !previousState.game_over &&
+    state.game_over
+  ) {
+    playMatchEndSound(playerOutcome);
+  }
   playerRating.classList.toggle(
     'rating-winner',
     state.game_over && playerOutcome === 'win',
@@ -310,6 +329,66 @@ function playMoveSound(capture = false) {
       oscillator.stop(start + 0.08);
     }
   });
+}
+
+function playCue(notes) {
+  void unlockMoveSounds().then(() => {
+    if (!audioContext || audioContext.state !== 'running') return;
+    const now = audioContext.currentTime;
+    for (const { frequency, offset, duration, volume, type } of notes) {
+      const oscillator = audioContext.createOscillator();
+      const envelope = audioContext.createGain();
+      const start = now + offset;
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      envelope.gain.setValueAtTime(0.0001, start);
+      envelope.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      oscillator.connect(envelope);
+      envelope.connect(audioContext.destination);
+      oscillator.start(start);
+      oscillator.stop(start + duration + 0.01);
+    }
+  });
+}
+
+function playNewMatchSound() {
+  playCue([
+    { frequency: 392, offset: 0, duration: 0.32, volume: 0.08, type: 'sine' },
+    { frequency: 523.25, offset: 0.11, duration: 0.38, volume: 0.075, type: 'sine' },
+    { frequency: 659.25, offset: 0.23, duration: 0.52, volume: 0.07, type: 'triangle' },
+  ]);
+}
+
+function playCheckSound() {
+  playCue([
+    { frequency: 880, offset: 0, duration: 0.12, volume: 0.075, type: 'triangle' },
+    { frequency: 1174.66, offset: 0.085, duration: 0.19, volume: 0.06, type: 'sine' },
+    { frequency: 783.99, offset: 0.22, duration: 0.17, volume: 0.045, type: 'triangle' },
+  ]);
+}
+
+function playMatchEndSound(outcome) {
+  const notes =
+    outcome === 'win'
+      ? [
+          { frequency: 523.25, offset: 0, duration: 0.3, volume: 0.07, type: 'sine' },
+          { frequency: 659.25, offset: 0.14, duration: 0.36, volume: 0.07, type: 'sine' },
+          { frequency: 783.99, offset: 0.28, duration: 0.45, volume: 0.07, type: 'triangle' },
+          { frequency: 1046.5, offset: 0.44, duration: 0.75, volume: 0.055, type: 'sine' },
+        ]
+      : outcome === 'loss'
+        ? [
+            { frequency: 392, offset: 0, duration: 0.3, volume: 0.07, type: 'triangle' },
+            { frequency: 329.63, offset: 0.2, duration: 0.35, volume: 0.065, type: 'sine' },
+            { frequency: 261.63, offset: 0.42, duration: 0.62, volume: 0.055, type: 'sine' },
+          ]
+        : [
+            { frequency: 440, offset: 0, duration: 0.38, volume: 0.06, type: 'sine' },
+            { frequency: 554.37, offset: 0.18, duration: 0.48, volume: 0.055, type: 'triangle' },
+            { frequency: 440, offset: 0.42, duration: 0.58, volume: 0.045, type: 'sine' },
+          ];
+  playCue(notes);
 }
 
 function unlockMoveSounds() {
@@ -509,7 +588,7 @@ function onBoardMove(origin, destination, metadata) {
 
 setupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  unlockMoveSounds();
+  await unlockMoveSounds();
   const submitButton = setupForm.querySelector('button[type="submit"]');
   submitButton.disabled = true;
   statusElement.textContent = 'Finding a match…';

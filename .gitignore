@@ -130,6 +130,8 @@ cache/
 *.svg
 !*.png  # Allow specific images if needed
 !docs/*.png  # Allow documentation images
+!frontend/board-texture.svg
+!frontend/pieces/tatiana/*.svg
 
 CLAUDE.md
 

@@ -43,6 +43,31 @@ h1 {
   overflow: hidden;
 }
 
+cg-board {
+  background-color: #eef2f1;
+  background-image: url('./board-texture.svg');
+  background-size: 100% 100%;
+}
+
+.cg-wrap coords {
+  font-size: clamp(0.75rem, 2.2vw, 1rem);
+  font-weight: 700;
+  opacity: 1;
+}
+
+.cg-wrap piece.pawn.white { background-image: url('./pieces/tatiana/wP.svg'); }
+.cg-wrap piece.knight.white { background-image: url('./pieces/tatiana/wN.svg'); }
+.cg-wrap piece.bishop.white { background-image: url('./pieces/tatiana/wB.svg'); }
+.cg-wrap piece.rook.white { background-image: url('./pieces/tatiana/wR.svg'); }
+.cg-wrap piece.queen.white { background-image: url('./pieces/tatiana/wQ.svg'); }
+.cg-wrap piece.king.white { background-image: url('./pieces/tatiana/wK.svg'); }
+.cg-wrap piece.pawn.black { background-image: url('./pieces/tatiana/bP.svg'); }
+.cg-wrap piece.knight.black { background-image: url('./pieces/tatiana/bN.svg'); }
+.cg-wrap piece.bishop.black { background-image: url('./pieces/tatiana/bB.svg'); }
+.cg-wrap piece.rook.black { background-image: url('./pieces/tatiana/bR.svg'); }
+.cg-wrap piece.queen.black { background-image: url('./pieces/tatiana/bQ.svg'); }
+.cg-wrap piece.king.black { background-image: url('./pieces/tatiana/bK.svg'); }
+
 .sidebar {
   display: grid;
   gap: 16px;

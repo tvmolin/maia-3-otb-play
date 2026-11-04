@@ -213,6 +213,11 @@ The app uses the 79M model, which must be downloaded before play. Preset
 clocks are 3+2, 5+0, 5+3, and 10+0. Both clocks are enforced by the server,
 including Maia's engine and think time.
 
+The Chessground interface uses the Tatiana chess-piece artwork by sadsnake1,
+from [Lichess](https://github.com/lichess-org/lila/tree/master/public/piece/tatiana),
+under the [CC BY-NC-SA 4.0 license](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+The artwork is for non-commercial use and must be shared under the same license.
+
 ## Models
 
 The built-in aliases and preset commands apply the correct architecture settings

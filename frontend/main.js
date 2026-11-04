@@ -445,10 +445,18 @@ setupForm.addEventListener('submit', async (event) => {
 promotionDialog.addEventListener('click', (event) => {
   const piece = event.target.closest('[data-piece]')?.dataset.piece;
   if (!piece || !promotionMove?.promotions.includes(piece)) return;
-  const move = `${promotionMove.moveKey}${piece}`;
+  const { moveKey } = promotionMove;
+  const move = `${moveKey}${piece}`;
   const capture = promotionMove.capture;
   promotionMove = undefined;
   promotionDialog.close();
+  const role = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[piece];
+  ground.setPieces(
+    new Map([
+      [moveKey.slice(0, 2), undefined],
+      [moveKey.slice(2), { role, color: currentState.player_color }],
+    ]),
+  );
   void sendMove(move, capture);
 });
 

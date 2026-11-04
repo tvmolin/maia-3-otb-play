@@ -318,6 +318,7 @@ button:disabled {
 
 #status {
   min-height: 1.5em;
+  margin-bottom: 8px;
   color: #aab4c0;
 }
 

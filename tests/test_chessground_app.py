@@ -437,6 +437,59 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertTrue(game.is_game_over)
         self.assertEqual(game.result, "1/2-1/2")
 
+    def test_threefold_repetition_auto_claims_a_draw(self):
+        board = chess.Board()
+        for move in ("Nf3", "Nf6", "Ng1", "Ng8") * 2:
+            board.push_san(move)
+        client = create_app(
+            self.engine,
+            board=board,
+            player_data_path=self.player_data_path,
+        ).test_client()
+
+        with patch.object(
+            GameSession,
+            "save_pgn_file",
+            return_value=Path("repetition.pgn"),
+        ):
+            response = client.post(
+                "/api/find-match",
+                json={"time_control": "3+2"},
+            )
+
+        state = response.json["state"]
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(state["game_over"])
+        self.assertEqual(state["result"], "1/2-1/2")
+        self.assertEqual(state["termination"], "threefold_repetition")
+        self.assertEqual(state["ply"], 8)
+
+    def test_fifty_move_rule_auto_claims_a_draw(self):
+        board = chess.Board("7k/8/8/8/8/8/6K1/R7 w - - 99 1")
+        client = create_app(
+            self.engine,
+            board=board,
+            player_data_path=self.player_data_path,
+        ).test_client()
+
+        with patch.object(
+            GameSession,
+            "save_pgn_file",
+            return_value=Path("fifty-moves.pgn"),
+        ):
+            client.post("/api/find-match", json={"time_control": "3+2"})
+            response = client.post(
+                "/api/move",
+                json={"move": "a1a2", "expected_ply": 0},
+            )
+
+        state = response.json["state"]
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(state["game_over"])
+        self.assertEqual(state["result"], "1/2-1/2")
+        self.assertEqual(state["termination"], "fifty_moves")
+        self.assertEqual(state["ply"], 1)
+
     def test_move_returns_authoritative_position_after_maia_responds(self):
         self.client.post("/api/start", json={"color": "white"})
         response = self.client.post(

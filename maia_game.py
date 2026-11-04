@@ -137,13 +137,22 @@ class GameSession:
 
     @property
     def is_game_over(self):
-        return self.board.is_game_over() or self.final_result is not None
+        return self.outcome is not None or self.final_result is not None
+
+    @property
+    def outcome(self):
+        outcome = self.board.outcome()
+        if outcome is not None:
+            return outcome
+        if self.board.is_fifty_moves():
+            return chess.Outcome(chess.Termination.FIFTY_MOVES, None)
+        if self.board.is_repetition(3):
+            return chess.Outcome(chess.Termination.THREEFOLD_REPETITION, None)
+        return None
 
     @property
     def result(self):
-        return self.final_result or (
-            self.board.result() if self.board.is_game_over() else "*"
-        )
+        return self.final_result or (self.outcome.result() if self.outcome else "*")
 
     @property
     def is_thinking(self):

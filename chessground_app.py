@@ -163,7 +163,7 @@ def create_app(engine, board=None, player_data_path=None):
             if game.is_game_over:
                 save_finished_game()
             board = game.board
-            board_outcome = board.outcome()
+            board_outcome = game.outcome
             termination = None
             if app.config.get("CHESSGROUND_TIMEOUT_LOSER"):
                 termination = "timeout"

@@ -103,6 +103,12 @@ function getResultDetail(state, outcome) {
     return outcome === 'win' ? 'Checkmate! A brilliant finish.' : 'Checkmate. Maia found the winning line.';
   }
   if (state.termination === 'stalemate') return 'No legal moves remain, and the game is drawn.';
+  if (state.termination === 'threefold_repetition') {
+    return 'The same position occurred three times, so the game is drawn.';
+  }
+  if (state.termination === 'fifty_moves') {
+    return 'Fifty moves passed without a pawn move or capture, so the game is drawn.';
+  }
   if (outcome === 'draw') return 'A hard-fought game ends level.';
   return 'The game is complete.';
 }

@@ -486,6 +486,28 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertTrue(state["can_move"])
         self.assertEqual(state["history"], [{"role": "Engine", "text": "e4"}])
 
+    def test_blitz_makes_maia_think_faster_than_rapid(self):
+        think_times = {}
+        for time_control in ("3+2", "15+10"):
+            client = create_app(
+                FakeEngine(moves=["e4"]),
+                player_data_path=self.player_data_path,
+            ).test_client()
+            with (
+                patch("chessground_app.random.choice", return_value=chess.BLACK),
+                patch("maia_game.time.perf_counter", side_effect=(0, 0)),
+                patch.object(GameSession, "wait_for_maia_think") as wait,
+            ):
+                response = client.post(
+                    "/api/find-match", json={"time_control": time_control}
+                )
+
+            self.assertEqual(response.status_code, 200)
+            think_times[time_control] = wait.call_args.args[0]
+
+        self.assertAlmostEqual(think_times["3+2"], 0.6)
+        self.assertAlmostEqual(think_times["15+10"], 3.0)
+
     def test_promotion_choices_are_returned_for_promotion_moves(self):
         board = chess.Board("7k/P7/8/8/8/8/8/7K w - - 0 1")
         client = create_app(

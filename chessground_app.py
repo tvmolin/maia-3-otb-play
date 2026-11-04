@@ -17,6 +17,7 @@ MAIA_ELO = 800
 PLAYER_ELO = DEFAULT_PLAYER_ELO
 MATCH_ELO_OFFSET = 100
 MATCH_TEMPERATURE_RANGE = (0.5, 0.9)
+BLITZ_THINK_TIME_FACTOR = 0.2
 HOST = "127.0.0.1"
 PORT = 5001
 TIME_CONTROLS = {
@@ -289,7 +290,10 @@ def create_app(engine, board=None, player_data_path=None):
 
     def play_maia_turn():
         turn = game.choose_maia_move()
-        game.wait_for_maia_think(turn.think_seconds)
+        think_seconds = turn.think_seconds
+        if app.config.get("CHESSGROUND_RATING_CATEGORY") == "blitz":
+            think_seconds *= BLITZ_THINK_TIME_FACTOR
+        game.wait_for_maia_think(think_seconds)
         now = time.monotonic()
         loser = sync_clock(now)
         if loser is not None:

@@ -24,6 +24,9 @@ const clockElements = {
   black: document.querySelector('#black-clock'),
 };
 const promotionDialog = document.querySelector('#promotion-dialog');
+const clocksPanel = document.querySelector('#clocks-panel');
+const actionsPanel = document.querySelector('#actions-panel');
+const movesPanel = document.querySelector('#moves-panel');
 const newGameButton = document.querySelector('#new-game');
 const undoButton = document.querySelector('#undo');
 const resignButton = document.querySelector('#resign');
@@ -131,6 +134,9 @@ function renderState(state) {
   });
 
   setupForm.hidden = state.started;
+  clocksPanel.hidden = !state.started;
+  actionsPanel.hidden = !state.started;
+  movesPanel.hidden = !state.started;
   newGameButton.hidden = !state.started;
   newGameButton.disabled = requestPending || state.maia_thinking;
   undoButton.disabled =

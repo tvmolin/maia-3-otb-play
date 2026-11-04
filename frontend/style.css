@@ -101,6 +101,11 @@ cg-board {
   opacity: 1;
 }
 
+.cg-wrap coords.files {
+  bottom: 0;
+  z-index: 10;
+}
+
 .cg-wrap.orientation-white coords.ranks coord,
 .cg-wrap.orientation-black coords.ranks coord,
 .cg-wrap.orientation-white coords.files coord,

@@ -43,7 +43,7 @@
           </select>
           <button type="submit">Find match</button>
         </form>
-        <section class="panel clocks" aria-label="Chess clock">
+        <section id="clocks-panel" class="panel clocks" aria-label="Chess clock" hidden>
           <div id="white-clock" class="clock-display">
             <span>White</span>
             <time>--:--</time>
@@ -53,7 +53,7 @@
             <time>--:--</time>
           </div>
         </section>
-        <section class="panel">
+        <section id="actions-panel" class="panel" hidden>
           <div id="status" role="status" aria-live="polite">Loading game…</div>
           <div class="actions">
             <button id="new-game" type="button" hidden>End match</button>
@@ -61,7 +61,7 @@
             <button id="resign" type="button" disabled>Resign</button>
           </div>
         </section>
-        <section class="panel">
+        <section id="moves-panel" class="panel" hidden>
           <h2>Moves</h2>
           <nav class="move-navigation" aria-label="Navigate moves">
             <button id="move-first" type="button" aria-label="Go to starting position" disabled>|&lt;</button>

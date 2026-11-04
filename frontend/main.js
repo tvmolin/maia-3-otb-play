@@ -47,6 +47,7 @@ let lastTimeoutRefreshAt = -Infinity;
 let promotionMove;
 let clockState;
 let audioContext;
+let lastCheckSoundPly = null;
 
 const ground = Chessground(boardElement, {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
@@ -125,6 +126,7 @@ function renderState(state) {
         state.history.length < previousState.history.length))
   ) {
     reviewPly = null;
+    lastCheckSoundPly = null;
   } else if (reviewPly !== null && reviewPly > state.ply) {
     reviewPly = state.ply;
   }
@@ -133,15 +135,13 @@ function renderState(state) {
     for (const move of newEngineMoves) {
       if (move.role === 'Engine') playMoveSound(move.text.includes('x'));
     }
-    if (
-      previousState.started &&
-      state.started &&
-      state.ply > previousState.ply &&
-      state.positions
-        ?.slice(previousState.ply + 1, state.ply + 1)
-        .some((position) => position.check)
-    ) {
-      playCheckSound();
+    if (previousState.started && state.started && state.ply > previousState.ply) {
+      for (let ply = previousState.ply + 1; ply <= state.ply; ply += 1) {
+        if (state.positions?.[ply]?.check && ply !== lastCheckSoundPly) {
+          playCheckSound();
+          lastCheckSoundPly = ply;
+        }
+      }
     }
   }
   if (state.started && state.time_control) {
@@ -512,7 +512,7 @@ async function refreshState() {
   renderState(await readJson(response));
 }
 
-function setPending(pending, allowPremove = false) {
+function setPending(pending, allowPremove = false, check = false) {
   requestPending = pending;
   if (!currentState) return;
   if (!pending) {
@@ -524,6 +524,7 @@ function setPending(pending, allowPremove = false) {
     ...(allowPremove
       ? {
           turnColor: currentState.player_color === 'white' ? 'black' : 'white',
+          check,
         }
       : {}),
     movable: {
@@ -540,11 +541,15 @@ function setPending(pending, allowPremove = false) {
     : `${currentState.maia_name || 'Maia'} is thinking…`;
 }
 
-async function sendMove(move, capture = false) {
+async function sendMove(move, capture = false, givesCheck = false) {
   const expectedPly = currentState.ply;
   let moveAccepted = false;
-  setPending(true, true);
+  setPending(true, true, givesCheck);
   playMoveSound(capture);
+  if (givesCheck) {
+    lastCheckSoundPly = expectedPly + 1;
+    playCheckSound();
+  }
   optimisticallyStartMaiaClock();
   try {
     const response = await fetch('/api/move', {
@@ -574,6 +579,7 @@ function onBoardMove(origin, destination, metadata) {
 
   const capture = Boolean(metadata.captured);
   const moveKey = `${origin}${destination}`;
+  const givesCheck = currentState.checking_moves.includes(moveKey);
   const promotions = currentState.promotions[moveKey];
   if (promotions?.length) {
     promotionMove = { moveKey, promotions, capture };
@@ -583,7 +589,7 @@ function onBoardMove(origin, destination, metadata) {
     promotionDialog.showModal();
     return;
   }
-  void sendMove(moveKey, capture);
+  void sendMove(moveKey, capture, givesCheck);
 }
 
 setupForm.addEventListener('submit', async (event) => {
@@ -616,6 +622,7 @@ promotionDialog.addEventListener('click', (event) => {
   const { moveKey } = promotionMove;
   const move = `${moveKey}${piece}`;
   const capture = promotionMove.capture;
+  const givesCheck = currentState.checking_moves.includes(move);
   promotionMove = undefined;
   promotionDialog.close();
   const role = { q: 'queen', r: 'rook', b: 'bishop', n: 'knight' }[piece];
@@ -625,7 +632,7 @@ promotionDialog.addEventListener('click', (event) => {
       [moveKey.slice(2), { role, color: currentState.player_color }],
     ]),
   );
-  void sendMove(move, capture);
+  void sendMove(move, capture, givesCheck);
 });
 
 promotionDialog.addEventListener('cancel', () => {

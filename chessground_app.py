@@ -180,6 +180,7 @@ def create_app(engine, board=None, player_data_path=None):
             )
             destinations = {}
             promotions = {}
+            checking_moves = []
             if can_move:
                 for move in board.legal_moves:
                     origin = chess.square_name(move.from_square)
@@ -188,6 +189,10 @@ def create_app(engine, board=None, player_data_path=None):
                     if move.promotion:
                         key = origin + destination
                         promotions.setdefault(key, []).append(move.uci()[4:])
+                    resulting_board = board.copy(stack=False)
+                    resulting_board.push(move)
+                    if resulting_board.is_check():
+                        checking_moves.append(move.uci())
 
             last_move = (
                 [
@@ -257,6 +262,7 @@ def create_app(engine, board=None, player_data_path=None):
                     move: sorted(set(pieces))
                     for move, pieces in promotions.items()
                 },
+                "checking_moves": checking_moves,
                 "history": list(game.history),
                 "ply": len(board.move_stack),
                 "positions": positions,

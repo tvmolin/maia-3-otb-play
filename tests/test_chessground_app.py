@@ -646,6 +646,36 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(state["promotions"]["a7a8"], ["b", "n", "q", "r"])
         self.assertIn("a8", state["destinations"]["a7"])
 
+    def test_state_identifies_legal_moves_that_give_check(self):
+        board = chess.Board("k7/8/8/8/8/8/8/R6K w - - 0 1")
+        client = create_app(
+            FakeEngine(),
+            board=board,
+            player_data_path=self.player_data_path,
+        ).test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        state = client.get("/api/state").json
+
+        self.assertIn("a1a7", state["checking_moves"])
+        self.assertNotIn("a1b1", state["checking_moves"])
+
+    def test_checking_promotion_choices_are_identified_individually(self):
+        board = chess.Board("7k/P7/8/8/8/8/8/7K w - - 0 1")
+        client = create_app(
+            FakeEngine(),
+            board=board,
+            player_data_path=self.player_data_path,
+        ).test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        state = client.get("/api/state").json
+
+        self.assertIn("a7a8q", state["checking_moves"])
+        self.assertIn("a7a8r", state["checking_moves"])
+        self.assertNotIn("a7a8b", state["checking_moves"])
+        self.assertNotIn("a7a8n", state["checking_moves"])
+
     def test_resign_finishes_game_and_allows_pgn_download(self):
         self.client.post("/api/start", json={"color": "white"})
         with patch.object(GameSession, "save_pgn_file", return_value=Path("resigned.pgn")):

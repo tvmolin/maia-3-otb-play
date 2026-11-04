@@ -1,3 +1,5 @@
+import json
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,7 +33,13 @@ class FakeEngine:
 class ChessgroundAppTests(unittest.TestCase):
     def setUp(self):
         self.engine = FakeEngine()
-        self.client = create_app(self.engine).test_client()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        self.player_data_path = Path(self.temp_dir.name) / "ladder.json"
+        self.client = create_app(
+            self.engine,
+            player_data_path=self.player_data_path,
+        ).test_client()
         self.random_patches = (
             patch("chessground_app.random.choice", return_value=chess.WHITE),
             patch("chessground_app.random.randint", return_value=820),
@@ -119,6 +127,46 @@ class ChessgroundAppTests(unittest.TestCase):
             {"SelfElo": 900, "OppoElo": 800, "Temperature": "0.9"},
         )
 
+    def test_finished_match_updates_and_persists_player_rating_once(self):
+        with patch.object(
+            GameSession,
+            "save_pgn_file",
+            return_value=Path("match.pgn"),
+        ):
+            self.client.post("/api/find-match", json={"time_control": "5+0"})
+            response = self.client.post("/api/command", json={"command": "resign"})
+            refreshed = self.client.get("/api/state")
+
+        self.assertEqual(response.status_code, 200)
+        state = response.json["state"]
+        self.assertEqual(state["player_elo"], 781)
+        self.assertEqual(state["rating_change"], -19)
+        self.assertEqual(refreshed.json["player_elo"], 781)
+        self.assertEqual(len(self.client.application.config["CHESSGROUND_LADDER"].matches), 1)
+
+        stored = json.loads(self.player_data_path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["player_elo"], 781)
+        self.assertEqual(stored["matches"][0]["outcome"], "loss")
+        self.assertEqual(stored["matches"][0]["k_factor"], 40)
+
+        restarted_engine = FakeEngine()
+        restarted = create_app(
+            restarted_engine, player_data_path=self.player_data_path
+        ).test_client()
+        self.assertEqual(restarted.get("/api/state").json["player_elo"], 781)
+        with (
+            patch("chessground_app.random.choice", return_value=chess.WHITE),
+            patch("chessground_app.random.randint", return_value=820) as rating_picker,
+            patch("chessground_app.random.uniform", return_value=0.7),
+        ):
+            next_match = restarted.post("/api/find-match", json={"time_control": "5+0"})
+        self.assertEqual(next_match.json["state"]["player_elo"], 781)
+        rating_picker.assert_called_once_with(681, 881)
+        self.assertEqual(
+            restarted_engine.configured[-1],
+            {"SelfElo": 820, "OppoElo": 781, "Temperature": "0.7"},
+        )
+
     def test_start_supports_twenty_plus_ten_clock(self):
         response = self.client.post(
             "/api/start",
@@ -159,7 +207,10 @@ class ChessgroundAppTests(unittest.TestCase):
     def test_custom_clock_rejects_out_of_range_values(self):
         for minutes, increment in ((0, 0), (181, 0), (5, -1), (5, 61), (True, 0)):
             with self.subTest(minutes=minutes, increment=increment):
-                client = create_app(FakeEngine()).test_client()
+                client = create_app(
+                    FakeEngine(),
+                    player_data_path=self.player_data_path,
+                ).test_client()
                 response = client.post(
                     "/api/start",
                     json={
@@ -290,7 +341,10 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(len(second.json["state"]["history"]), 2)
 
     def test_engine_failure_rolls_back_the_players_move(self):
-        client = create_app(FakeEngine(error=RuntimeError("engine failed"))).test_client()
+        client = create_app(
+            FakeEngine(error=RuntimeError("engine failed")),
+            player_data_path=self.player_data_path,
+        ).test_client()
         client.post("/api/start", json={"color": "white"})
 
         response = client.post(
@@ -318,7 +372,10 @@ class ChessgroundAppTests(unittest.TestCase):
             patch("chessground_app.random.choice", return_value=chess.BLACK),
             patch.object(GameSession, "wait_for_maia_think"),
         ):
-            client = create_app(FakeEngine(moves=["e4"])).test_client()
+            client = create_app(
+                FakeEngine(moves=["e4"]),
+                player_data_path=self.player_data_path,
+            ).test_client()
             response = client.post("/api/find-match", json={"time_control": "5+0"})
 
         self.assertEqual(response.status_code, 200)
@@ -330,7 +387,11 @@ class ChessgroundAppTests(unittest.TestCase):
 
     def test_promotion_choices_are_returned_for_promotion_moves(self):
         board = chess.Board("7k/P7/8/8/8/8/8/7K w - - 0 1")
-        client = create_app(FakeEngine(), board=board).test_client()
+        client = create_app(
+            FakeEngine(),
+            board=board,
+            player_data_path=self.player_data_path,
+        ).test_client()
         client.post("/api/start", json={"color": "white"})
 
         state = client.get("/api/state").json

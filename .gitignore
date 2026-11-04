@@ -172,3 +172,5 @@ data/evals/*
 !data/evals/2022-test-annotated.jsonl
 !assets/scale_acc_1d.png
 .venv
+
+/games

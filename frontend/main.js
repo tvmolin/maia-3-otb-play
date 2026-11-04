@@ -106,7 +106,18 @@ function renderState(state) {
 
   if (state.game_over) {
     const reason = state.termination === 'timeout' ? 'Time out. ' : '';
-    statusElement.textContent = `${reason}Game over${state.result ? ` (${state.result})` : ''}.`;
+    const outcome =
+      state.rating_outcome === 'win'
+        ? 'Win'
+        : state.rating_outcome === 'loss'
+          ? 'Loss'
+          : 'Draw';
+    const ratingUpdate =
+      state.rating_change === null
+        ? ''
+        : ` ${outcome}: ${state.rating_change > 0 ? '+' : ''}${state.rating_change} rating (${state.player_elo}).`;
+    statusElement.textContent =
+      `${reason}Game over${state.result ? ` (${state.result})` : ''}.${ratingUpdate}`;
   } else if (!state.started) {
     statusElement.textContent = 'Choose a time control and find a match.';
   } else if (state.maia_thinking || requestPending) {

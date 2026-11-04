@@ -2,17 +2,19 @@ import logging
 import random
 import threading
 import time
+import uuid
 import webbrowser
 from pathlib import Path
 
 import chess
 from flask import Flask, jsonify, render_template, request
 
+from ladder import DEFAULT_PLAYER_ELO, LadderStore
 from maia_game import GameSession, create_engine
 
 
 MAIA_ELO = 800
-PLAYER_ELO = 800
+PLAYER_ELO = DEFAULT_PLAYER_ELO
 MATCH_ELO_OFFSET = 100
 MATCH_TEMPERATURE_RANGE = (0.5, 0.9)
 HOST = "127.0.0.1"
@@ -94,26 +96,53 @@ class ChessClock:
         }
 
 
-def create_app(engine, board=None):
+def create_app(engine, board=None, player_data_path=None):
     app = Flask(__name__)
+    ladder = LadderStore(
+        player_data_path
+        or Path(__file__).resolve().parent / "games" / "ladder.json"
+    )
     game = GameSession(
         engine,
         player_color=chess.WHITE,
-        player_name="You",
-        player_elo=PLAYER_ELO,
+        player_name="Devonty",
+        player_elo=ladder.player_elo,
         maia_elo=MAIA_ELO,
         board=board,
         started=False,
     )
     app.config["CHESS_GAME"] = game
+    app.config["CHESSGROUND_LADDER"] = ladder
     app.config["CHESSGROUND_REQUEST_LOCK"] = threading.RLock()
     clock = ChessClock()
     app.config["CHESSGROUND_CLOCK"] = clock
     clock_history = []
 
     def save_finished_game():
-        if game.started and game.is_game_over and game.saved_pgn_path is None:
-            game.save_pgn_file()
+        if not game.started or not game.is_game_over:
+            return
+        pgn_path = game.saved_pgn_path
+        if pgn_path is None:
+            pgn_path = game.save_pgn_file()
+        if app.config.get("CHESSGROUND_RATING_RECORD") is None:
+            match = {
+                "match_id": app.config["CHESSGROUND_MATCH_ID"],
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "result": game.result,
+                "player_color": game.player_color_name,
+                "maia_elo": game.maia_elo,
+                "temperature": game.temperature,
+                "time_control": (
+                    f"{clock.base_seconds // 60}+{clock.increment_seconds}"
+                    if app.config["CHESSGROUND_TIME_CONTROL"] == "custom"
+                    else app.config["CHESSGROUND_TIME_CONTROL"]
+                ),
+                "plies": len(game.board.move_stack),
+                "pgn_file": pgn_path.name,
+            }
+            record = ladder.record_match(match)
+            game.player_elo = record["player_elo_after"]
+            app.config["CHESSGROUND_RATING_RECORD"] = record
 
     def sync_clock(now=None):
         loser = clock.settle(time.monotonic() if now is None else now)
@@ -185,7 +214,17 @@ def create_app(engine, board=None):
                 "ply": len(board.move_stack),
                 "maia_elo": game.maia_elo,
                 "maia_name": game.maia_name,
-                "player_elo": game.player_elo,
+                "player_elo": game.player_elo if game.started else ladder.player_elo,
+                "rating_change": (
+                    app.config["CHESSGROUND_RATING_RECORD"]["rating_change"]
+                    if app.config.get("CHESSGROUND_RATING_RECORD")
+                    else None
+                ),
+                "rating_outcome": (
+                    app.config["CHESSGROUND_RATING_RECORD"]["outcome"]
+                    if app.config.get("CHESSGROUND_RATING_RECORD")
+                    else None
+                ),
                 "maia_temperature": game.temperature if game.started else None,
                 "time_control": app.config.get("CHESSGROUND_TIME_CONTROL"),
                 "termination": (
@@ -270,17 +309,19 @@ def create_app(engine, board=None):
         else:
             return state_response(400, "Choose a supported time control.")
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            if game.started:
+                return state_response(409, "Finish the current match before finding another.")
             color = random.choice((chess.WHITE, chess.BLACK))
             maia_elo = random.randint(
-                PLAYER_ELO - MATCH_ELO_OFFSET,
-                PLAYER_ELO + MATCH_ELO_OFFSET,
+                max(0, ladder.player_elo - MATCH_ELO_OFFSET),
+                min(5000, ladder.player_elo + MATCH_ELO_OFFSET),
             )
             temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
             try:
                 started_now = game.start(
                     color,
                     maia_elo=maia_elo,
-                    player_elo=PLAYER_ELO,
+                    player_elo=ladder.player_elo,
                     temperature=temperature,
                 )
             except ValueError as error:
@@ -293,6 +334,8 @@ def create_app(engine, board=None):
                 base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
                 app.config["CHESSGROUND_TEMPERATURE"] = temperature
+                app.config["CHESSGROUND_MATCH_ID"] = str(uuid.uuid4())
+                app.config.pop("CHESSGROUND_RATING_RECORD", None)
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                 clock_history.clear()
                 clock.start(
@@ -310,6 +353,8 @@ def create_app(engine, board=None):
                     clock_history.clear()
                     app.config.pop("CHESSGROUND_TIME_CONTROL", None)
                     app.config.pop("CHESSGROUND_TEMPERATURE", None)
+                    app.config.pop("CHESSGROUND_MATCH_ID", None)
+                    app.config.pop("CHESSGROUND_RATING_RECORD", None)
                     app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
                     app.logger.exception("Maia failed to make the opening move.")
                     return state_response(503, "The engine failed to make its opening move.")
@@ -408,6 +453,8 @@ def create_app(engine, board=None):
                 clock_history.clear()
                 app.config.pop("CHESSGROUND_TIME_CONTROL", None)
                 app.config.pop("CHESSGROUND_TEMPERATURE", None)
+                app.config.pop("CHESSGROUND_MATCH_ID", None)
+                app.config.pop("CHESSGROUND_RATING_RECORD", None)
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
             except ValueError as error:
                 return state_response(409, str(error))

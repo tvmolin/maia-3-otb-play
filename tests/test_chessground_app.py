@@ -369,6 +369,30 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.json["state"]["result"], "0-1")
         self.assertEqual(response.json["state"]["termination"], "timeout")
 
+    def test_state_poll_ends_game_when_player_runs_out_of_time(self):
+        now = [0.0]
+        with (
+            patch.dict(TIME_CONTROLS["blitz"], {"1+0": (1, 0)}),
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(
+                GameSession,
+                "save_pgn_file",
+                return_value=Path("timeout.pgn"),
+            ),
+        ):
+            self.client.post(
+                "/api/start",
+                json={"color": "white", "time_control": "1+0"},
+            )
+            now[0] = 2
+            response = self.client.get("/api/state")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["game_over"])
+        self.assertEqual(response.json["result"], "0-1")
+        self.assertEqual(response.json["termination"], "timeout")
+        self.assertIsNone(response.json["clock"]["running_color"])
+
     def test_maia_timeout_stops_before_applying_her_move(self):
         now = [0.0]
 

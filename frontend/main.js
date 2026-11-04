@@ -33,6 +33,8 @@ const pgnFallback = document.querySelector('#pgn-fallback');
 let currentState;
 let reviewPly = null;
 let requestPending = false;
+let timeoutRefreshPending = false;
+let lastTimeoutRefreshAt = -Infinity;
 let promotionMove;
 let clockState;
 let audioContext;
@@ -304,6 +306,24 @@ function updateClockDisplay() {
       'expiring',
       clockState?.runningColor === color && milliseconds < 10_000,
     );
+  }
+
+  if (
+    clockState?.started &&
+    clockState.runningColor &&
+    remaining[clockState.runningColor] <= 0 &&
+    performance.now() - lastTimeoutRefreshAt >= 1000 &&
+    !timeoutRefreshPending
+  ) {
+    lastTimeoutRefreshAt = performance.now();
+    timeoutRefreshPending = true;
+    void refreshState()
+      .catch((error) => {
+        statusElement.textContent = error.message;
+      })
+      .finally(() => {
+        timeoutRefreshPending = false;
+      });
   }
 }
 

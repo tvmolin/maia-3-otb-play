@@ -9,6 +9,10 @@ const setupForm = document.querySelector('#setup');
 const timeControlInput = document.querySelector('#time-control');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
+const moveFirstButton = document.querySelector('#move-first');
+const movePreviousButton = document.querySelector('#move-previous');
+const moveNextButton = document.querySelector('#move-next');
+const moveLiveButton = document.querySelector('#move-live');
 const opponentDisplay = document.querySelector('#opponent-display');
 const opponentName = document.querySelector('#opponent-name');
 const opponentRating = document.querySelector('#opponent-rating');
@@ -26,6 +30,7 @@ const resignButton = document.querySelector('#resign');
 const pgnButton = document.querySelector('#download-pgn');
 
 let currentState;
+let reviewPly = null;
 let requestPending = false;
 let promotionMove;
 let clockState;
@@ -49,6 +54,16 @@ function destinationsToMap(destinations = {}) {
 function renderState(state) {
   const previousState = currentState;
   currentState = state;
+  if (
+    !state.started ||
+    (previousState &&
+      (state.ply < previousState.ply ||
+        state.history.length < previousState.history.length))
+  ) {
+    reviewPly = null;
+  } else if (reviewPly !== null && reviewPly > state.ply) {
+    reviewPly = state.ply;
+  }
   if (previousState) {
     const newEngineMoves = state.history.slice(previousState.history.length);
     for (const move of newEngineMoves) {
@@ -59,7 +74,16 @@ function renderState(state) {
     timeControlInput.value = state.time_control;
   }
   renderClocks(state.clock, state.started);
-  const canMove = Boolean(state.can_move) && !requestPending;
+  const activePly = reviewPly ?? state.ply;
+  const reviewing = activePly !== state.ply;
+  const position = state.positions?.[activePly] || {
+    fen: state.fen,
+    turn_color: state.turn_color,
+    last_move: state.last_move,
+    check: state.check,
+    check_square: state.check_square,
+  };
+  const canMove = Boolean(state.can_move) && !requestPending && !reviewing;
   opponentDisplay.hidden = !state.started;
   playerDisplay.hidden = !state.started;
   opponentName.textContent = state.maia_name || 'Maia';
@@ -67,36 +91,73 @@ function renderState(state) {
   playerName.textContent = state.player_name || 'You';
   playerRating.textContent = state.started ? `(${state.player_elo})` : '';
   ground.set({
-    fen: state.fen,
+    fen: position.fen,
     orientation: state.player_color || 'white',
-    turnColor: state.turn_color,
-    lastMove: state.last_move || undefined,
-    check: state.check,
+    turnColor: position.turn_color,
+    lastMove: position.last_move || undefined,
+    check: position.check,
     movable: {
       color: canMove ? state.player_color : undefined,
       dests: destinationsToMap(canMove ? state.destinations : {}),
       events: { after: onBoardMove },
     },
-    premovable: { enabled: state.started && !state.game_over },
+    premovable: {
+      enabled: state.started && !state.game_over && !reviewing,
+    },
   });
 
   setupForm.hidden = state.started;
   newGameButton.hidden = !state.started;
   newGameButton.disabled = requestPending || state.maia_thinking;
   undoButton.disabled =
-    !state.started || state.game_over || requestPending || state.maia_thinking;
+    !state.started ||
+    state.game_over ||
+    requestPending ||
+    state.maia_thinking ||
+    reviewing;
   resignButton.disabled =
     !state.started || state.game_over || requestPending || state.maia_thinking;
   pgnButton.hidden = !state.game_over;
 
   historyElement.replaceChildren();
-  for (const [index, item] of state.history.entries()) {
+  for (let index = 0; index < state.history.length; index += 2) {
     const row = document.createElement('li');
-    row.textContent = `${Math.floor(index / 2) + 1}${index % 2 === 0 ? '.' : '...'} ${item.text}`;
+    row.className = 'move-pair';
+    const moveNumber = document.createElement('span');
+    moveNumber.className = 'move-number';
+    moveNumber.textContent = `${Math.floor(index / 2) + 1}.`;
     historyElement.append(row);
+    row.append(moveNumber);
+    for (let offset = 0; offset < 2; offset += 1) {
+      const move = state.history[index + offset];
+      if (!move) {
+        row.append(document.createElement('span'));
+        continue;
+      }
+      const moveButton = document.createElement('button');
+      moveButton.type = 'button';
+      moveButton.className = 'move-san';
+      moveButton.textContent = move.text;
+      moveButton.dataset.ply = String(index + offset + 1);
+      moveButton.setAttribute(
+        'aria-label',
+        `Review move ${Math.floor(index / 2) + 1}${offset ? '... ' : '. '}${move.text}`,
+      );
+      if (activePly === index + offset + 1) {
+        moveButton.setAttribute('aria-current', 'true');
+      }
+      row.append(moveButton);
+    }
   }
+  const currentPly = reviewPly ?? state.ply;
+  moveFirstButton.disabled = !state.started || currentPly === 0;
+  movePreviousButton.disabled = !state.started || currentPly === 0;
+  moveNextButton.disabled = !state.started || currentPly >= state.ply;
+  moveLiveButton.disabled = !state.started || currentPly >= state.ply;
 
-  if (state.game_over) {
+  if (reviewing) {
+    statusElement.textContent = `Reviewing move ${activePly} of ${state.ply}.`;
+  } else if (state.game_over) {
     const reason = state.termination === 'timeout' ? 'Time out. ' : '';
     const outcome =
       state.rating_outcome === 'win'
@@ -121,6 +182,12 @@ function renderState(state) {
       ? `${matchSummary}Your move.`
       : `${matchSummary}Waiting for Maia.`;
   }
+}
+
+function selectReviewPly(ply) {
+  if (!currentState) return;
+  reviewPly = ply >= currentState.ply ? null : Math.max(0, ply);
+  renderState(currentState);
 }
 
 function playMoveSound(capture = false) {
@@ -398,6 +465,18 @@ newGameButton.addEventListener('click', async () => {
 });
 
 undoButton.addEventListener('click', () => void sendCommand('undo'));
+moveFirstButton.addEventListener('click', () => selectReviewPly(0));
+movePreviousButton.addEventListener('click', () => {
+  selectReviewPly((reviewPly ?? currentState.ply) - 1);
+});
+moveNextButton.addEventListener('click', () => {
+  selectReviewPly((reviewPly ?? currentState.ply) + 1);
+});
+moveLiveButton.addEventListener('click', () => selectReviewPly(currentState.ply));
+historyElement.addEventListener('click', (event) => {
+  const moveButton = event.target.closest('[data-ply]');
+  if (moveButton) selectReviewPly(Number(moveButton.dataset.ply));
+});
 resignButton.addEventListener('click', () => {
   if (window.confirm('Resign this game?')) void sendCommand('resign');
 });

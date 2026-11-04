@@ -328,10 +328,47 @@ button:disabled {
 
 #move-history {
   max-height: 260px;
-  margin: 12px 0 0;
-  padding-left: 24px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
   overflow-y: auto;
-  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+}
+
+.move-navigation {
+  display: flex;
+  gap: 6px;
+}
+
+.move-navigation button {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 4px 8px;
+}
+
+.move-pair {
+  display: grid;
+  grid-template-columns: 2.5em minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  min-height: 34px;
+}
+
+.move-number {
+  padding-left: 4px;
+  color: #aab4c0;
+}
+
+.move-san {
+  width: 100%;
+  min-height: 30px;
+  padding: 3px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.move-san[aria-current="true"] {
+  background: #39495b;
 }
 
 #promotion-dialog {

@@ -189,6 +189,43 @@ def create_app(engine, board=None, player_data_path=None):
                 else None
             )
             king = board.king(board.turn) if board.is_check() else None
+            position_board = board.root()
+            positions = [
+                {
+                    "fen": position_board.board_fen(),
+                    "turn_color": (
+                        "white" if position_board.turn == chess.WHITE else "black"
+                    ),
+                    "last_move": None,
+                    "check": position_board.is_check(),
+                    "check_square": (
+                        chess.square_name(position_board.king(position_board.turn))
+                        if position_board.is_check()
+                        else None
+                    ),
+                }
+            ]
+            for move in board.move_stack:
+                position_board.push(move)
+                checked_king = position_board.king(position_board.turn)
+                positions.append(
+                    {
+                        "fen": position_board.board_fen(),
+                        "turn_color": (
+                            "white" if position_board.turn == chess.WHITE else "black"
+                        ),
+                        "last_move": [
+                            chess.square_name(move.from_square),
+                            chess.square_name(move.to_square),
+                        ],
+                        "check": position_board.is_check(),
+                        "check_square": (
+                            chess.square_name(checked_king)
+                            if checked_king is not None
+                            else None
+                        ),
+                    }
+                )
             return {
                 "fen": board.board_fen(),
                 "turn_color": "white" if board.turn == chess.WHITE else "black",
@@ -213,6 +250,7 @@ def create_app(engine, board=None, player_data_path=None):
                 },
                 "history": list(game.history),
                 "ply": len(board.move_stack),
+                "positions": positions,
                 "maia_elo": game.maia_elo,
                 "maia_name": game.maia_name,
                 "player_elo": game.player_elo if game.started else ladder.rating_for(

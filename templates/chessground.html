@@ -64,6 +64,12 @@
         </section>
         <section class="panel">
           <h2>Moves</h2>
+          <nav class="move-navigation" aria-label="Navigate moves">
+            <button id="move-first" type="button" aria-label="Go to starting position" disabled>|&lt;</button>
+            <button id="move-previous" type="button" aria-label="Previous move" disabled>&lt;</button>
+            <button id="move-next" type="button" aria-label="Next move" disabled>&gt;</button>
+            <button id="move-live" type="button" aria-label="Return to current position" disabled>Live</button>
+          </nav>
           <ol id="move-history" aria-label="Move history"></ol>
         </section>
       </aside>

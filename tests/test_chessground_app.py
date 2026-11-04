@@ -79,6 +79,8 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertNotIn(b'id="player-elo"', response.data)
         self.assertIn(b'id="opponent-display"', response.data)
         self.assertIn(b'id="player-display"', response.data)
+        self.assertIn(b'id="move-previous"', response.data)
+        self.assertIn(b'id="move-next"', response.data)
 
     def test_available_clocks_are_grouped_into_blitz_and_rapid(self):
         self.assertEqual(
@@ -403,6 +405,14 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         state = response.json["state"]
         self.assertEqual(state["ply"], 2)
+        self.assertEqual(len(state["positions"]), 3)
+        self.assertEqual(state["positions"][0]["turn_color"], "white")
+        self.assertEqual(state["positions"][0]["last_move"], None)
+        self.assertEqual(state["positions"][1]["turn_color"], "black")
+        self.assertEqual(state["positions"][1]["last_move"], ["e2", "e4"])
+        self.assertEqual(state["positions"][2]["turn_color"], "white")
+        self.assertEqual(state["positions"][2]["last_move"], ["e7", "e5"])
+        self.assertEqual(state["positions"][2]["fen"], state["fen"])
         self.assertEqual(
             state["history"],
             [

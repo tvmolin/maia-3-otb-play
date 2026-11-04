@@ -42,7 +42,7 @@ const ground = Chessground(boardElement, {
   autoCastle: true,
   viewOnly: false,
   premovable: { enabled: true },
-  movable: { dests: new Map() },
+  movable: { free: false, dests: new Map() },
 });
 
 function fitBoardToDevicePixels() {

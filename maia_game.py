@@ -181,9 +181,7 @@ class GameSession:
                 or temperature < 0
             ):
                 raise ValueError("Temperature must be a non-negative number.")
-            options = {}
-            if self.maia_elo != maia_elo or self.player_elo != player_elo:
-                options.update({"SelfElo": maia_elo, "OppoElo": player_elo})
+            options = {"SelfElo": maia_elo, "OppoElo": player_elo}
             if temperature is not None and temperature != self.temperature:
                 options["Temperature"] = str(temperature)
             if options:

@@ -229,6 +229,35 @@ class ChessgroundAppTests(unittest.TestCase):
             {"SelfElo": 900, "OppoElo": 800, "Temperature": "0.9"},
         )
 
+    def test_find_match_configures_both_elos_for_a_persisted_lower_rating(self):
+        self.player_data_path.write_text(
+            json.dumps(
+                {
+                    "ratings": {"blitz": 600, "rapid": 600},
+                    "matches": {"blitz": [], "rapid": []},
+                }
+            ),
+            encoding="utf-8",
+        )
+        client = create_app(
+            self.engine,
+            player_data_path=self.player_data_path,
+        ).test_client()
+
+        with patch("chessground_app.random.randint", return_value=600):
+            response = client.post(
+                "/api/find-match",
+                json={"time_control": "3+2"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["state"]["player_elo"], 600)
+        self.assertEqual(response.json["state"]["maia_elo"], 600)
+        self.assertEqual(
+            self.engine.configured[-1],
+            {"SelfElo": 600, "OppoElo": 600, "Temperature": "0.7"},
+        )
+
     def test_finished_match_updates_and_persists_player_rating_once(self):
         with patch.object(
             GameSession,

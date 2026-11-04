@@ -75,6 +75,55 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b'id="opponent-display"', response.data)
         self.assertIn(b'id="player-display"', response.data)
 
+    def test_profile_shows_empty_rating_chart_and_match_history(self):
+        response = self.client.get("/profile")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Player profile", response.data)
+        self.assertIn(b"Rating progress", response.data)
+        self.assertIn(b"Current rating", response.data)
+        self.assertIn(b">800</strong>", response.data)
+        self.assertIn(b"No matches yet", response.data)
+        self.assertIn(b"Back to game", response.data)
+
+    def test_profile_shows_rating_progress_and_newest_match_first(self):
+        ladder = self.client.application.config["CHESSGROUND_LADDER"]
+        ladder.record_match(
+            {
+                "match_id": "older",
+                "finished_at": "2026-11-03T12:00:00Z",
+                "result": "1-0",
+                "player_color": "white",
+                "maia_elo": 800,
+                "temperature": 0.7,
+                "time_control": "5+0",
+                "plies": 20,
+                "pgn_file": "older.pgn",
+            }
+        )
+        ladder.record_match(
+            {
+                "match_id": "newer",
+                "finished_at": "2026-11-04T12:00:00Z",
+                "result": "1-0",
+                "player_color": "black",
+                "maia_elo": 900,
+                "temperature": 0.8,
+                "time_control": "20+10",
+                "plies": 30,
+                "pgn_file": "newer.pgn",
+            }
+        )
+
+        response = self.client.get("/profile")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"class=\"rating-chart-line\"", response.data)
+        self.assertIn(b"Maia (900)", response.data)
+        self.assertIn(b"Maia (800)", response.data)
+        self.assertIn(b"20+10", response.data)
+        self.assertLess(response.data.index(b"Maia (900)"), response.data.index(b"Maia (800)"))
+
     def test_start_exposes_legal_destinations(self):
         response = self.client.post("/api/find-match", json={"time_control": "5+0"})
 

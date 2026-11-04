@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14171b">
+  <title>Player profile - Chess ladder</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/main.css') }}">
+</head>
+
+<body>
+  <main>
+    <header class="page-header">
+      <h1>Player profile</h1>
+      <a class="header-link" href="{{ url_for('index') }}">Back to game</a>
+    </header>
+    <div class="profile-layout">
+      <section class="panel" aria-labelledby="rating-title">
+        <h2 id="rating-title">Rating progress</h2>
+        <div class="profile-summary">
+          <span>Current rating</span>
+          <strong>{{ player_elo }}</strong>
+        </div>
+        <svg class="rating-chart" viewBox="0 0 800 250" role="img"
+          aria-label="Rating progress from {{ chart_min|round|int }} to {{ chart_max|round|int }}">
+          {% for tick in rating_ticks %}
+          <line class="rating-chart-grid" x1="58" x2="780" y1="{{ tick.y }}" y2="{{ tick.y }}"></line>
+          <text class="rating-chart-axis-label" x="50" y="{{ tick.y + 5 }}" text-anchor="end">{{ tick.rating }}</text>
+          {% endfor %}
+          {% if rating_points|length > 1 %}
+          <polyline class="rating-chart-line"
+            points="{% for point in rating_points %}{{ point.x }},{{ point.y }} {% endfor %}"></polyline>
+          {% endif %}
+          {% for point in rating_points %}
+          <circle class="rating-chart-point" cx="{{ point.x }}" cy="{{ point.y }}" r="6">
+            <title>Rating {{ point.rating }}{% if not loop.first %}, match {{ loop.index0 }}{% else %}, starting rating{% endif %}</title>
+          </circle>
+          {% endfor %}
+        </svg>
+      </section>
+      <section class="panel" aria-labelledby="history-title">
+        <h2 id="history-title">Match history</h2>
+        <div class="profile-table-wrap">
+          <table class="profile-table">
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Opponent</th>
+                <th scope="col">Result</th>
+                <th scope="col">Time control</th>
+                <th scope="col">Rating change</th>
+                <th scope="col">Rating</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for match in matches %}
+              <tr>
+                <td><time datetime="{{ match.finished_at }}">{{ match.finished_at }}</time></td>
+                <td>Maia ({{ match.maia_elo }})</td>
+                <td>{{ match.outcome|capitalize }}</td>
+                <td>{{ match.time_control }}</td>
+                <td class="{% if match.rating_change > 0 %}rating-positive{% elif match.rating_change < 0 %}rating-negative{% endif %}">
+                  {{ "%+d"|format(match.rating_change) }}
+                </td>
+                <td>{{ match.player_elo_after }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td class="empty-history" colspan="6">No matches yet. Play a match to start your history.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</body>
+
+</html>

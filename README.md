@@ -214,6 +214,7 @@ legal after Maia's reply. Find another match after a game to return to the
 matchmaking screen. Finished match results and
 rating changes (K=40) are stored in `games/ladder.json` and persist between
 app runs. Draws count as half a point.
+Open **Profile** to view your rating graph and match history.
 The custom clock accepts 1–180 minutes per side and a 0–60 second increment.
 The backend validates moves and remains the source of truth for game state.
 The app uses the 79M model, which must be downloaded before play. Preset

@@ -267,6 +267,57 @@ def create_app(engine, board=None, player_data_path=None):
             )
         return render_template("chessground.html")
 
+    @app.get("/profile")
+    def profile():
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            matches = list(ladder.matches)
+            player_elo = ladder.player_elo
+
+        ratings = [matches[0]["player_elo_before"]] if matches else [player_elo]
+        ratings.extend(match["player_elo_after"] for match in matches)
+        low = min(ratings)
+        high = max(ratings)
+        padding = max(20, (high - low) * 0.15)
+        chart_min = max(0, low - padding)
+        chart_max = min(5000, high + padding)
+        if chart_min == chart_max:
+            chart_min = max(0, chart_min - 20)
+            chart_max = min(5000, chart_max + 20)
+
+        left, right, top, bottom = 64, 776, 24, 224
+        point_count = len(ratings)
+        rating_points = [
+            {
+                "x": round(
+                    left
+                    if point_count == 1
+                    else left + (right - left) * index / (point_count - 1)
+                ),
+                "y": round(
+                    bottom
+                    - (rating - chart_min) * (bottom - top) / (chart_max - chart_min)
+                ),
+                "rating": rating,
+            }
+            for index, rating in enumerate(ratings)
+        ]
+        rating_ticks = [
+            {
+                "y": round(bottom - fraction * (bottom - top)),
+                "rating": round(chart_min + fraction * (chart_max - chart_min)),
+            }
+            for fraction in (0, 0.5, 1)
+        ]
+        return render_template(
+            "profile.html",
+            player_elo=player_elo,
+            matches=reversed(matches),
+            rating_points=rating_points,
+            rating_ticks=rating_ticks,
+            chart_min=chart_min,
+            chart_max=chart_max,
+        )
+
     @app.get("/api/state")
     def get_state():
         return jsonify(state_data())

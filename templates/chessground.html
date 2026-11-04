@@ -13,23 +13,40 @@
 <body>
   <main>
     <header class="page-header">
-      <h1>Chess ladder</h1>
-      <a class="header-link" href="{{ url_for('profile') }}">Profile</a>
+      <a class="brand-lockup" href="{{ url_for('index') }}" aria-label="Maia Chess home">
+        <span class="brand-mark" aria-hidden="true">♞</span>
+        <span>
+          <span class="brand-name">MAIA CHESS</span>
+          <span class="brand-tagline">Your next great game starts here</span>
+        </span>
+      </a>
+      <a class="header-link" href="{{ url_for('profile') }}">
+        <span aria-hidden="true">◷</span> Profile
+      </a>
     </header>
     <div class="game-layout">
       <section class="board-column" aria-label="Chess board">
         <div id="opponent-display" class="board-player" hidden>
+          <span class="player-avatar opponent-avatar" aria-hidden="true">M</span>
           <span id="opponent-name" class="board-player-name">Maia</span>
           <span id="opponent-rating" class="board-player-rating"></span>
+          <span class="player-side-label">OPPONENT</span>
         </div>
         <div id="board" class="cg-wrap"></div>
         <div id="player-display" class="board-player" hidden>
+          <span class="player-avatar player-avatar-you" aria-hidden="true">Y</span>
           <span id="player-name" class="board-player-name">You</span>
           <span id="player-rating" class="board-player-rating"></span>
+          <span class="player-side-label">YOU</span>
         </div>
       </section>
       <aside class="sidebar">
         <form id="setup" class="panel">
+          <div class="setup-heading">
+            <span class="eyebrow">READY WHEN YOU ARE</span>
+            <h2>Find your next game</h2>
+            <p>Pick a time control and take your place at the board.</p>
+          </div>
           <label for="time-control">Time control</label>
           <select id="time-control" name="time_control">
             <optgroup label="Blitz">

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" preserveAspectRatio="none">
   <defs>
     <pattern id="squares" width="2" height="2" patternUnits="userSpaceOnUse">
-      <rect width="2" height="2" fill="#eef2f1"/>
-      <path d="M1 0h1v1H1zM0 1h1v1H0z" fill="#7097aa"/>
+      <rect width="2" height="2" fill="#eee9dc"/>
+      <path d="M1 0h1v1H1zM0 1h1v1H0z" fill="#789477"/>
     </pattern>
     <filter id="texture">
       <feTurbulence type="fractalNoise" baseFrequency=".035" numOctaves="3" seed="8" stitchTiles="stitch"/>

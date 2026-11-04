@@ -59,7 +59,6 @@
             <button id="new-game" type="button" hidden>End match</button>
             <button id="undo" type="button" disabled>Undo</button>
             <button id="resign" type="button" disabled>Resign</button>
-            <button id="download-pgn" type="button" hidden>Download PGN</button>
           </div>
         </section>
         <section class="panel">
@@ -71,6 +70,10 @@
             <button id="move-live" type="button" aria-label="Return to current position" disabled>Live</button>
           </nav>
           <ol id="move-history" aria-label="Move history"></ol>
+          <div class="move-actions">
+            <button id="copy-pgn" type="button" hidden>Copy PGN</button>
+            <textarea id="pgn-fallback" aria-label="PGN to copy" readonly hidden></textarea>
+          </div>
         </section>
       </aside>
     </div>

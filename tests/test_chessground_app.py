@@ -81,6 +81,14 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b'id="player-display"', response.data)
         self.assertIn(b'id="move-previous"', response.data)
         self.assertIn(b'id="move-next"', response.data)
+        self.assertIn(b'id="copy-pgn"', response.data)
+        self.assertIn(b">Copy PGN</button>", response.data)
+        self.assertIn(b'id="pgn-fallback"', response.data)
+        self.assertNotIn(b"Download PGN", response.data)
+        self.assertLess(
+            response.data.index(b'<ol id="move-history"'),
+            response.data.index(b'id="copy-pgn"'),
+        )
 
     def test_available_clocks_are_grouped_into_blitz_and_rapid(self):
         self.assertEqual(

@@ -328,6 +328,22 @@ button:disabled {
   gap: 8px;
 }
 
+.move-actions {
+  margin-top: 8px;
+}
+
+#pgn-fallback {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #424c58;
+  border-radius: 7px;
+  background: #15191e;
+  color: inherit;
+  font: 0.85rem ui-monospace, monospace;
+}
+
 #move-history {
   max-height: 260px;
   margin: 8px 0 0;

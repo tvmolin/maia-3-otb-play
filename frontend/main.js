@@ -27,7 +27,8 @@ const promotionDialog = document.querySelector('#promotion-dialog');
 const newGameButton = document.querySelector('#new-game');
 const undoButton = document.querySelector('#undo');
 const resignButton = document.querySelector('#resign');
-const pgnButton = document.querySelector('#download-pgn');
+const copyPgnButton = document.querySelector('#copy-pgn');
+const pgnFallback = document.querySelector('#pgn-fallback');
 
 let currentState;
 let reviewPly = null;
@@ -138,7 +139,8 @@ function renderState(state) {
     reviewing;
   resignButton.disabled =
     !state.started || state.game_over || requestPending || state.maia_thinking;
-  pgnButton.hidden = !state.game_over;
+  copyPgnButton.hidden = !state.game_over;
+  if (!state.game_over) pgnFallback.hidden = true;
   if (boardLayoutChanged) {
     fitBoardToDevicePixels();
     ground.redrawAll();
@@ -514,18 +516,41 @@ resignButton.addEventListener('click', () => {
   if (window.confirm('Resign this game?')) void sendCommand('resign');
 });
 
-pgnButton.addEventListener('click', async () => {
+copyPgnButton.addEventListener('click', async () => {
   try {
     const response = await fetch('/api/pgn');
     const data = await readJson(response);
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(
-      new Blob([data.pgn], { type: 'application/x-chess-pgn' }),
-    );
-    link.href = url;
-    link.download = 'maia-game.pgn';
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(data.pgn);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+
+    if (!copied) {
+      pgnFallback.value = data.pgn;
+      pgnFallback.hidden = false;
+      pgnFallback.focus();
+      pgnFallback.select();
+      if (document.execCommand) {
+        try {
+          copied = document.execCommand('copy');
+        } catch {
+          copied = false;
+        }
+      }
+    }
+
+    if (copied) {
+      pgnFallback.hidden = true;
+      statusElement.textContent = 'PGN copied to clipboard.';
+    } else {
+      statusElement.textContent =
+        'Clipboard access is unavailable. The PGN is selected below; copy it manually.';
+    }
   } catch (error) {
     statusElement.textContent = error.message;
   }

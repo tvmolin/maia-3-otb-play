@@ -107,6 +107,7 @@ class ChessgroundAppTests(unittest.TestCase):
                 "finished_at": "2026-11-04T12:00:00Z",
                 "result": "1-0",
                 "player_color": "black",
+                "opponent_name": "TacticalLlama4821",
                 "maia_elo": 900,
                 "temperature": 0.8,
                 "time_control": "20+10",
@@ -119,10 +120,13 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"class=\"rating-chart-line\"", response.data)
-        self.assertIn(b"Maia (900)", response.data)
+        self.assertIn(b"TacticalLlama4821 (900)", response.data)
         self.assertIn(b"Maia (800)", response.data)
         self.assertIn(b"20+10", response.data)
-        self.assertLess(response.data.index(b"Maia (900)"), response.data.index(b"Maia (800)"))
+        self.assertLess(
+            response.data.index(b"TacticalLlama4821 (900)"),
+            response.data.index(b"Maia (800)"),
+        )
 
     def test_start_exposes_legal_destinations(self):
         response = self.client.post("/api/find-match", json={"time_control": "5+0"})
@@ -134,6 +138,10 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.json["state"]["player_elo"], 800)
         self.assertEqual(response.json["state"]["maia_elo"], 820)
         self.assertEqual(response.json["state"]["maia_temperature"], 0.7)
+        self.assertRegex(
+            response.json["state"]["maia_name"],
+            r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$",
+        )
         self.assertEqual(
             self.engine.configured[-1],
             {"SelfElo": 820, "OppoElo": 800, "Temperature": "0.7"},
@@ -168,6 +176,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(state["player_elo"], 800)
         self.assertEqual(state["maia_elo"], 900)
         self.assertEqual(state["maia_temperature"], 0.9)
+        self.assertRegex(state["maia_name"], r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$")
         color_picker.assert_called_once_with((chess.WHITE, chess.BLACK))
         rating_picker.assert_called_once_with(700, 900)
         temperature_picker.assert_called_once_with(0.5, 0.9)
@@ -196,6 +205,10 @@ class ChessgroundAppTests(unittest.TestCase):
         stored = json.loads(self.player_data_path.read_text(encoding="utf-8"))
         self.assertEqual(stored["player_elo"], 781)
         self.assertEqual(stored["matches"][0]["outcome"], "loss")
+        self.assertEqual(
+            stored["matches"][0]["opponent_name"],
+            state["maia_name"],
+        )
         self.assertEqual(stored["matches"][0]["k_factor"], 40)
 
         restarted_engine = FakeEngine()

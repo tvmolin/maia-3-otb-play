@@ -130,6 +130,7 @@ def create_app(engine, board=None, player_data_path=None):
                 "finished_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "result": game.result,
                 "player_color": game.player_color_name,
+                "opponent_name": game.maia_name,
                 "maia_elo": game.maia_elo,
                 "temperature": game.temperature,
                 "time_control": (
@@ -368,6 +369,7 @@ def create_app(engine, board=None, player_data_path=None):
                 min(5000, ladder.player_elo + MATCH_ELO_OFFSET),
             )
             temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
+            opponent_name = ladder.generate_opponent_name()
             try:
                 started_now = game.start(
                     color,
@@ -382,6 +384,7 @@ def create_app(engine, board=None, player_data_path=None):
                 return state_response(503, "Could not configure the engine.")
 
             if started_now:
+                game.maia_name = opponent_name
                 base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
                 app.config["CHESSGROUND_TEMPERATURE"] = temperature

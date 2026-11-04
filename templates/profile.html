@@ -57,7 +57,7 @@
               {% for match in matches %}
               <tr>
                 <td><time datetime="{{ match.finished_at }}">{{ match.finished_at }}</time></td>
-                <td>Maia ({{ match.maia_elo }})</td>
+                <td>{{ match.opponent_name|default("Maia") }} ({{ match.maia_elo }})</td>
                 <td>{{ match.outcome|capitalize }}</td>
                 <td>{{ match.time_control }}</td>
                 <td class="{% if match.rating_change > 0 %}rating-positive{% elif match.rating_change < 0 %}rating-negative{% endif %}">

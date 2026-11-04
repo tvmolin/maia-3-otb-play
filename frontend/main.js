@@ -70,7 +70,7 @@ function renderState(state) {
   const canMove = Boolean(state.can_move) && !requestPending;
   opponentDisplay.hidden = !state.started;
   playerDisplay.hidden = !state.started;
-  opponentName.textContent = 'Maia';
+  opponentName.textContent = state.maia_name || 'Maia';
   opponentRating.textContent = state.started ? `(${state.maia_elo})` : '';
   playerName.textContent = state.player_name || 'You';
   playerRating.textContent = state.started ? `(${state.player_elo})` : '';
@@ -121,10 +121,10 @@ function renderState(state) {
   } else if (!state.started) {
     statusElement.textContent = 'Choose a time control and find a match.';
   } else if (state.maia_thinking || requestPending) {
-    statusElement.textContent = 'Maia is thinking…';
+    statusElement.textContent = `${state.maia_name || 'Maia'} is thinking…`;
   } else {
     const matchSummary =
-      `You (${state.player_elo}) are ${state.player_color} vs Maia ${state.maia_elo}. `;
+      `You (${state.player_elo}) are ${state.player_color} vs ${state.maia_name || 'Maia'} (${state.maia_elo}). `;
     statusElement.textContent = state.can_move
       ? `${matchSummary}Your move.`
       : `${matchSummary}Waiting for Maia.`;
@@ -284,8 +284,8 @@ function setPending(pending, allowPremove = false) {
   undoButton.disabled = true;
   resignButton.disabled = true;
   statusElement.textContent = allowPremove
-    ? 'Maia is thinking… You can queue a premove.'
-    : 'Maia is thinking…';
+    ? `${currentState.maia_name || 'Maia'} is thinking… You can queue a premove.`
+    : `${currentState.maia_name || 'Maia'} is thinking…`;
 }
 
 async function sendMove(move, capture = false) {

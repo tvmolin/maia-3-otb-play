@@ -1,10 +1,39 @@
 import json
+import secrets
 from pathlib import Path
 
 
 DEFAULT_PLAYER_ELO = 800
 K_FACTOR = 40
 MAX_PLAYER_ELO = 5000
+OPPONENT_ADJECTIVES = (
+    "Blunder",
+    "Bouncing",
+    "Caffeinated",
+    "Chaotic",
+    "Checkmating",
+    "Forking",
+    "Knightly",
+    "Mischievous",
+    "Sneaky",
+    "Tactical",
+    "Unstoppable",
+    "Wandering",
+)
+OPPONENT_NOUNS = (
+    "Bishop",
+    "Checkers",
+    "Dragon",
+    "EnPassant",
+    "Fork",
+    "Goblin",
+    "Horsey",
+    "Knight",
+    "Llama",
+    "Pawn",
+    "Rook",
+    "Wizard",
+)
 
 
 class LadderStore:
@@ -18,6 +47,21 @@ class LadderStore:
         else:
             self.player_elo = initial_elo
             self.matches = []
+
+    def generate_opponent_name(self):
+        used_names = {
+            match.get("opponent_name")
+            for match in self.matches
+            if isinstance(match.get("opponent_name"), str)
+        }
+        while True:
+            name = (
+                f"{secrets.choice(OPPONENT_ADJECTIVES)}"
+                f"{secrets.choice(OPPONENT_NOUNS)}"
+                f"{secrets.randbelow(9000) + 1000}"
+            )
+            if name not in used_names:
+                return name
 
     def record_match(self, match):
         for existing in self.matches:

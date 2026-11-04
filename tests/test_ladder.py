@@ -60,6 +60,15 @@ class LadderStoreTests(unittest.TestCase):
         self.assertEqual(reloaded.player_elo, 820)
         self.assertEqual(reloaded.matches, [record])
 
+    def test_generated_usernames_are_playful_and_unique_to_match_history(self):
+        first = self.store.generate_opponent_name()
+        self.store.matches.append({"opponent_name": first})
+        second = self.store.generate_opponent_name()
+
+        self.assertRegex(first, r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$")
+        self.assertNotEqual(first, second)
+        self.assertRegex(second, r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$")
+
 
 if __name__ == "__main__":
     unittest.main()

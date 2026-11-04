@@ -56,6 +56,22 @@ class ChessgroundAppTests(unittest.TestCase):
             {"white": 300_000, "black": 300_000},
         )
 
+    def test_start_supports_twenty_plus_ten_clock(self):
+        response = self.client.post(
+            "/api/start",
+            json={"color": "white", "time_control": "20+10"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        clock = response.json["state"]["clock"]
+        self.assertEqual(response.json["state"]["time_control"], "20+10")
+        self.assertEqual(clock["base_seconds"], 1200)
+        self.assertEqual(clock["increment_seconds"], 10)
+        self.assertEqual(
+            clock["remaining_ms"],
+            {"white": 1_200_000, "black": 1_200_000},
+        )
+
     def test_custom_clock_uses_requested_base_time_and_increment(self):
         response = self.client.post(
             "/api/start",

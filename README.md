@@ -212,8 +212,8 @@ legal after Maia's reply.
 The custom clock accepts 1–180 minutes per side and a 0–60 second increment.
 The backend validates moves and remains the source of truth for game state.
 The app uses the 79M model, which must be downloaded before play. Preset
-clocks are 3+2, 5+0, 5+3, and 10+0. Both clocks are enforced by the server,
-including Maia's engine and think time.
+clocks are 3+2, 5+0, 5+3, 10+0, and 20+10. Both clocks are enforced by the
+server, including Maia's engine and think time.
 
 The Chessground interface uses the Tatiana chess-piece artwork by sadsnake1,
 from [Lichess](https://github.com/lichess-org/lila/tree/master/public/piece/tatiana),

@@ -588,6 +588,19 @@ button:disabled {
   margin-top: 8px;
 }
 
+#copy-pgn {
+  min-height: 38px;
+  padding-inline: 14px;
+  border-color: #506443;
+  background: #293729;
+  color: #d8edbb;
+}
+
+#copy-pgn:hover:not(:disabled) {
+  border-color: #8ca65d;
+  background: #354631;
+}
+
 #pgn-fallback {
   width: 100%;
   min-height: 120px;
@@ -611,13 +624,51 @@ button:disabled {
 
 .move-navigation {
   display: flex;
-  gap: 6px;
+  gap: 7px;
+  padding: 6px;
+  border: 1px solid #304038;
+  border-radius: 12px;
+  background: #151c18;
 }
 
 .move-navigation button {
+  display: grid;
   min-width: 40px;
-  min-height: 34px;
-  padding: 4px 8px;
+  min-height: 38px;
+  padding: 4px 10px;
+  place-items: center;
+  border-color: #35453a;
+  border-radius: 8px;
+  background: #202a24;
+  color: #d9e5d7;
+  font-size: 0.9rem;
+  font-weight: 750;
+}
+
+.move-navigation button:hover:not(:disabled) {
+  border-color: #71884f;
+  background: #2b392c;
+  color: var(--accent-strong);
+}
+
+.move-navigation button:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: #68766b;
+  opacity: 1;
+}
+
+#move-live {
+  min-width: 58px;
+  margin-left: auto;
+  border-color: #405045;
+  background: #202a24;
+}
+
+#move-live:disabled {
+  border-color: #526444;
+  background: #2b3928;
+  color: #c1dba0;
 }
 
 .sidebar h2 {
@@ -631,29 +682,49 @@ button:disabled {
 
 .move-pair {
   display: grid;
-  grid-template-columns: 2.5em minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 2.25em minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  min-height: 38px;
+  min-height: 40px;
+  border-bottom: 1px solid #29362e;
 }
 
 .move-number {
-  padding-left: 4px;
-  color: #aab4c0;
+  padding-left: 6px;
+  color: #829286;
+  font-size: 0.82rem;
+  font-weight: 650;
 }
 
 .move-san {
   width: 100%;
-  min-height: 30px;
-  padding: 3px 6px;
+  min-height: 32px;
+  padding: 4px 8px;
   border: 0;
+  border-radius: 7px;
   background: transparent;
+  color: #dce5dc;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
   text-align: left;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.move-san:hover:not(:disabled) {
+  transform: none;
+  border-color: transparent;
+  background: #27342b;
+  color: #f0f5eb;
 }
 
 .move-san[aria-current="true"] {
-  border-radius: 6px;
-  background: #35442d;
+  background: #35452d;
+  box-shadow: inset 2px 0 #b6e36a;
   color: #e2f5c2;
+  font-weight: 750;
+}
+
+.move-san[aria-current="true"]:hover:not(:disabled) {
+  background: #3d5033;
 }
 
 #promotion-dialog {

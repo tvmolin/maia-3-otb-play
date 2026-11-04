@@ -15,7 +15,15 @@
     <h1>Chess ladder</h1>
     <div class="game-layout">
       <section class="board-column" aria-label="Chess board">
+        <div id="opponent-display" class="board-player" hidden>
+          <span id="opponent-name" class="board-player-name">Maia</span>
+          <span id="opponent-rating" class="board-player-rating"></span>
+        </div>
         <div id="board" class="cg-wrap"></div>
+        <div id="player-display" class="board-player" hidden>
+          <span id="player-name" class="board-player-name">You</span>
+          <span id="player-rating" class="board-player-rating"></span>
+        </div>
       </section>
       <aside class="sidebar">
         <form id="setup" class="panel">

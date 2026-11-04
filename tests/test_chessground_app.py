@@ -64,6 +64,8 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertNotIn(b'id="player-color"', response.data)
         self.assertNotIn(b'id="maia-elo"', response.data)
         self.assertNotIn(b'id="player-elo"', response.data)
+        self.assertIn(b'id="opponent-display"', response.data)
+        self.assertIn(b'id="player-display"', response.data)
 
     def test_start_exposes_legal_destinations(self):
         response = self.client.post("/api/find-match", json={"time_control": "5+0"})

@@ -12,6 +12,12 @@ const baseTimeMinutesInput = document.querySelector('#base-time-minutes');
 const incrementSecondsInput = document.querySelector('#increment-seconds');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
+const opponentDisplay = document.querySelector('#opponent-display');
+const opponentName = document.querySelector('#opponent-name');
+const opponentRating = document.querySelector('#opponent-rating');
+const playerDisplay = document.querySelector('#player-display');
+const playerName = document.querySelector('#player-name');
+const playerRating = document.querySelector('#player-rating');
 const clockElements = {
   white: document.querySelector('#white-clock'),
   black: document.querySelector('#black-clock'),
@@ -62,6 +68,12 @@ function renderState(state) {
   }
   renderClocks(state.clock, state.started);
   const canMove = Boolean(state.can_move) && !requestPending;
+  opponentDisplay.hidden = !state.started;
+  playerDisplay.hidden = !state.started;
+  opponentName.textContent = 'Maia';
+  opponentRating.textContent = state.started ? `(${state.maia_elo})` : '';
+  playerName.textContent = state.player_name || 'You';
+  playerRating.textContent = state.started ? `(${state.player_elo})` : '';
   ground.set({
     fen: state.fen,
     orientation: state.player_color || 'white',

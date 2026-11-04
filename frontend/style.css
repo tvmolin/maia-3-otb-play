@@ -33,6 +33,29 @@ h1 {
 
 .board-column {
   min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.board-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 1px solid #343c46;
+  border-radius: 8px;
+  background: #1c2128;
+}
+
+.board-player-name {
+  font-weight: 700;
+}
+
+.board-player-rating {
+  color: #aab4c0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .cg-wrap {

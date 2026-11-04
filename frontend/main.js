@@ -36,6 +36,7 @@ const ground = Chessground(boardElement, {
   orientation: 'white',
   autoCastle: true,
   viewOnly: false,
+  premovable: { enabled: true },
   movable: { dests: new Map() },
 });
 
@@ -77,6 +78,7 @@ function renderState(state) {
       dests: destinationsToMap(canMove ? state.destinations : {}),
       events: { after: onBoardMove },
     },
+    premovable: { enabled: state.started && !state.game_over },
   });
 
   setupForm.hidden = state.started;
@@ -236,7 +238,7 @@ async function refreshState() {
   renderState(await readJson(response));
 }
 
-function setPending(pending) {
+function setPending(pending, allowPremove = false) {
   requestPending = pending;
   if (!currentState) return;
   if (!pending) {
@@ -245,8 +247,13 @@ function setPending(pending) {
   }
 
   ground.set({
+    ...(allowPremove
+      ? {
+          turnColor: currentState.player_color === 'white' ? 'black' : 'white',
+        }
+      : {}),
     movable: {
-      color: undefined,
+      color: allowPremove ? currentState.player_color : undefined,
       dests: new Map(),
       events: { after: onBoardMove },
     },
@@ -254,12 +261,15 @@ function setPending(pending) {
   newGameButton.disabled = true;
   undoButton.disabled = true;
   resignButton.disabled = true;
-  statusElement.textContent = 'Maia is thinking…';
+  statusElement.textContent = allowPremove
+    ? 'Maia is thinking… You can queue a premove.'
+    : 'Maia is thinking…';
 }
 
 async function sendMove(move, capture = false) {
   const expectedPly = currentState.ply;
-  setPending(true);
+  let moveAccepted = false;
+  setPending(true, true);
   playMoveSound(capture);
   optimisticallyStartMaiaClock();
   try {
@@ -270,11 +280,15 @@ async function sendMove(move, capture = false) {
     });
     const data = await readJson(response);
     renderState(data.state);
+    moveAccepted = true;
   } catch (error) {
     statusElement.textContent = error.message;
+    ground.cancelPremove();
     await refreshState();
   } finally {
     setPending(false);
+    if (moveAccepted && currentState?.can_move) ground.playPremove();
+    else ground.cancelPremove();
   }
 }
 

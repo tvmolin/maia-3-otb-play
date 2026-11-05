@@ -98,13 +98,13 @@ function getPlayerOutcome(state) {
 function getResultDetail(state, outcome) {
   if (state.termination === 'timeout') {
     if (outcome === 'draw') return 'Time expired, but neither side had enough material to win.';
-    return outcome === 'win' ? 'Maia ran out of time.' : 'Your clock ran out.';
+    return outcome === 'win' ? 'Your opponent ran out of time.' : 'Your clock ran out.';
   }
   if (state.termination === 'resignation') {
     return outcome === 'loss' ? 'You resigned. There is always another game.' : 'The game ended by resignation.';
   }
   if (state.termination === 'checkmate') {
-    return outcome === 'win' ? 'Checkmate! A brilliant finish.' : 'Checkmate. Maia found the winning line.';
+    return outcome === 'win' ? 'Checkmate! A brilliant finish.' : 'Checkmate.';
   }
   if (state.termination === 'stalemate') return 'No legal moves remain, and the game is drawn.';
   if (state.termination === 'threefold_repetition') {

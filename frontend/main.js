@@ -425,7 +425,7 @@ function playMoveSound(capture = false) {
         start + 0.055,
       );
       volume.gain.setValueAtTime(0.0001, start);
-      volume.gain.exponentialRampToValueAtTime(capture ? 0.16 : 0.12, start + 0.006);
+      volume.gain.exponentialRampToValueAtTime(capture ? 0.96 : 0.72, start + 0.006);
       volume.gain.exponentialRampToValueAtTime(0.0001, start + 0.075);
       oscillator.connect(volume);
       volume.connect(audioContext.destination);
@@ -446,7 +446,7 @@ function playCue(notes) {
       oscillator.type = type;
       oscillator.frequency.setValueAtTime(frequency, start);
       envelope.gain.setValueAtTime(0.0001, start);
-      envelope.gain.exponentialRampToValueAtTime(volume, start + 0.025);
+      envelope.gain.exponentialRampToValueAtTime(volume * 6, start + 0.025);
       envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);
       oscillator.connect(envelope);
       envelope.connect(audioContext.destination);

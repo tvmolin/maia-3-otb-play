@@ -20,6 +20,8 @@ OPPONENT_ADJECTIVES = (
     "Tactical",
     "Unstoppable",
     "Wandering",
+    "Wooden",
+    "Happy"
 )
 OPPONENT_NOUNS = (
     "Bishop",
@@ -30,6 +32,8 @@ OPPONENT_NOUNS = (
     "Goblin",
     "Horsey",
     "Knight",
+    "Juicer",
+    "Shield",
     "Llama",
     "Pawn",
     "Rook",

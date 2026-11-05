@@ -19,6 +19,8 @@ const opponentRating = document.querySelector('#opponent-rating');
 const playerDisplay = document.querySelector('#player-display');
 const playerName = document.querySelector('#player-name');
 const playerRating = document.querySelector('#player-rating');
+const opponentCapturedPieces = document.querySelector('#opponent-captured-pieces');
+const playerCapturedPieces = document.querySelector('#player-captured-pieces');
 const clockElements = {
   white: document.querySelector('#white-clock'),
   black: document.querySelector('#black-clock'),
@@ -114,6 +116,97 @@ function getResultDetail(state, outcome) {
   return 'The game is complete.';
 }
 
+function renderCapturedPieces(element, pieces = []) {
+  const pieceSymbols = {
+    p: '♟',
+    n: '♞',
+    b: '♝',
+    r: '♜',
+    q: '♛',
+    P: '♙',
+    N: '♘',
+    B: '♗',
+    R: '♖',
+    Q: '♕',
+  };
+  const pieceNames = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen' };
+  const counts = new Map();
+  element.replaceChildren();
+  for (const piece of pieces) {
+    const symbol = pieceSymbols[piece];
+    if (!symbol) continue;
+    const icon = document.createElement('span');
+    icon.className = 'captured-piece';
+    icon.dataset.color = piece === piece.toLowerCase() ? 'black' : 'white';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = symbol;
+    element.append(icon);
+    const type = piece.toLowerCase();
+    counts.set(type, (counts.get(type) || 0) + 1);
+  }
+  const description = [...counts].map(([type, count]) => {
+    const name = pieceNames[type];
+    return `${count} ${name}${count === 1 ? '' : 's'}`;
+  });
+  element.setAttribute(
+    'aria-label',
+    description.length ? `Captured: ${description.join(', ')}` : 'No pieces captured',
+  );
+}
+
+function getPieceAtFen(fen, square) {
+  const [file, rank] = square;
+  const row = 8 - Number(rank);
+  const column = file.charCodeAt(0) - 'a'.charCodeAt(0);
+  let currentColumn = 0;
+  for (const token of fen.split(' ')[0].split('/')[row] || '') {
+    if (/\d/.test(token)) {
+      currentColumn += Number(token);
+    } else {
+      if (currentColumn === column) return token;
+      currentColumn += 1;
+    }
+  }
+  return null;
+}
+
+function getCapturedPieceSymbol(move, capturedPiece) {
+  if (capturedPiece?.role && capturedPiece?.color) {
+    const symbol = { pawn: 'p', knight: 'n', bishop: 'b', rook: 'r', queen: 'q' }[
+      capturedPiece.role
+    ];
+    if (symbol) {
+      return capturedPiece.color === 'white' ? symbol.toUpperCase() : symbol;
+    }
+  }
+
+  const fen = currentState.positions?.[currentState.ply]?.fen || currentState.fen;
+  const [origin, destination] = [move.slice(0, 2), move.slice(2, 4)];
+  const targetPiece = getPieceAtFen(fen, destination);
+  if (targetPiece) return targetPiece;
+  const movingPiece = getPieceAtFen(fen, origin);
+  if (
+    movingPiece?.toLowerCase() === 'p' &&
+    origin[0] !== destination[0]
+  ) {
+    return movingPiece === 'P' ? 'p' : 'P';
+  }
+  return null;
+}
+
+function optimisticallyShowCapture(piece) {
+  if (!piece) return;
+  const position =
+    currentState.positions?.[currentState.ply]?.captured_pieces ||
+    currentState.captured_pieces;
+  const capturedPieces = {
+    white: [...(position?.white || [])],
+    black: [...(position?.black || [])],
+  };
+  capturedPieces[currentState.player_color].push(piece);
+  renderCapturedPieces(playerCapturedPieces, capturedPieces[currentState.player_color]);
+}
+
 function renderState(state) {
   const previousState = currentState;
   const boardLayoutChanged =
@@ -152,6 +245,7 @@ function renderState(state) {
   const reviewing = activePly !== state.ply;
   const position = state.positions?.[activePly] || {
     fen: state.fen,
+    captured_pieces: state.captured_pieces,
     turn_color: state.turn_color,
     last_move: state.last_move,
     check: state.check,
@@ -164,6 +258,14 @@ function renderState(state) {
   opponentRating.textContent = state.started ? `(${state.maia_elo})` : '';
   playerName.textContent = state.player_name || 'You';
   playerRating.textContent = state.started ? `(${state.player_elo})` : '';
+  const capturedPieces = position.captured_pieces || state.captured_pieces || {
+    white: [],
+    black: [],
+  };
+  const playerColor = state.player_color || 'white';
+  const opponentColor = playerColor === 'white' ? 'black' : 'white';
+  renderCapturedPieces(playerCapturedPieces, capturedPieces[playerColor]);
+  renderCapturedPieces(opponentCapturedPieces, capturedPieces[opponentColor]);
   const playerOutcome = getPlayerOutcome(state);
   if (previousState && !previousState.started && state.started) {
     playNewMatchSound();
@@ -541,11 +643,12 @@ function setPending(pending, allowPremove = false, check = false) {
     : `${currentState.maia_name || 'Maia'} is thinking…`;
 }
 
-async function sendMove(move, capture = false, givesCheck = false) {
+async function sendMove(move, capturedPiece = null, givesCheck = false) {
   const expectedPly = currentState.ply;
   let moveAccepted = false;
   setPending(true, true, givesCheck);
-  playMoveSound(capture);
+  optimisticallyShowCapture(capturedPiece);
+  playMoveSound(Boolean(capturedPiece));
   if (givesCheck) {
     lastCheckSoundPly = expectedPly + 1;
     playCheckSound();
@@ -577,19 +680,19 @@ function onBoardMove(origin, destination, metadata) {
     return;
   }
 
-  const capture = Boolean(metadata.captured);
   const moveKey = `${origin}${destination}`;
+  const capturedPiece = getCapturedPieceSymbol(moveKey, metadata.captured);
   const givesCheck = currentState.checking_moves.includes(moveKey);
   const promotions = currentState.promotions[moveKey];
   if (promotions?.length) {
-    promotionMove = { moveKey, promotions, capture };
+    promotionMove = { moveKey, promotions, capturedPiece };
     for (const button of promotionDialog.querySelectorAll('[data-piece]')) {
       button.hidden = !promotions.includes(button.dataset.piece);
     }
     promotionDialog.showModal();
     return;
   }
-  void sendMove(moveKey, capture, givesCheck);
+  void sendMove(moveKey, capturedPiece, givesCheck);
 }
 
 setupForm.addEventListener('submit', async (event) => {
@@ -621,7 +724,7 @@ promotionDialog.addEventListener('click', (event) => {
   if (!piece || !promotionMove?.promotions.includes(piece)) return;
   const { moveKey } = promotionMove;
   const move = `${moveKey}${piece}`;
-  const capture = promotionMove.capture;
+  const { capturedPiece } = promotionMove;
   const givesCheck = currentState.checking_moves.includes(move);
   promotionMove = undefined;
   promotionDialog.close();
@@ -632,7 +735,7 @@ promotionDialog.addEventListener('click', (event) => {
       [moveKey.slice(2), { role, color: currentState.player_color }],
     ]),
   );
-  void sendMove(move, capture, givesCheck);
+  void sendMove(move, capturedPiece, givesCheck);
 });
 
 promotionDialog.addEventListener('cancel', () => {

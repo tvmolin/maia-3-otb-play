@@ -547,6 +547,41 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertTrue(state["can_move"])
         self.assertEqual(state["last_move"], ["e7", "e5"])
 
+    def test_positions_track_captured_pieces_for_each_player(self):
+        self.engine.moves = ["d5", "Qxd5"]
+        self.client.post("/api/start", json={"color": "white"})
+        self.client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        response = self.client.post(
+            "/api/move",
+            json={"move": "e4d5", "expected_ply": 2},
+        )
+
+        state = response.json["state"]
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(state["positions"][0]["captured_pieces"], {
+            "white": [],
+            "black": [],
+        })
+        self.assertEqual(state["positions"][3]["captured_pieces"]["white"], ["p"])
+        self.assertEqual(state["positions"][4]["captured_pieces"]["black"], ["P"])
+        self.assertEqual(state["captured_pieces"], state["positions"][-1]["captured_pieces"])
+
+    def test_positions_track_en_passant_captures(self):
+        self.engine.moves = ["a6", "d5", "Nf6"]
+        self.client.post("/api/start", json={"color": "white"})
+        self.client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        self.client.post("/api/move", json={"move": "e4e5", "expected_ply": 2})
+        response = self.client.post(
+            "/api/move",
+            json={"move": "e5d6", "expected_ply": 4},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json["state"]["captured_pieces"]["white"],
+            ["p"],
+        )
+
     def test_stale_move_is_rejected_without_changing_position(self):
         self.client.post("/api/start", json={"color": "white"})
         first = self.client.post(

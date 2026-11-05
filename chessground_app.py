@@ -204,9 +204,17 @@ def create_app(engine, board=None, player_data_path=None):
             )
             king = board.king(board.turn) if board.is_check() else None
             position_board = board.root()
+            captured_pieces = {
+                "white": [],
+                "black": [],
+            }
             positions = [
                 {
                     "fen": position_board.board_fen(),
+                    "captured_pieces": {
+                        color: list(pieces)
+                        for color, pieces in captured_pieces.items()
+                    },
                     "turn_color": (
                         "white" if position_board.turn == chess.WHITE else "black"
                     ),
@@ -220,11 +228,22 @@ def create_app(engine, board=None, player_data_path=None):
                 }
             ]
             for move in board.move_stack:
+                if position_board.is_capture(move):
+                    captured_piece = position_board.piece_at(move.to_square)
+                    if position_board.is_en_passant(move):
+                        captured_piece = chess.Piece(chess.PAWN, not position_board.turn)
+                    if captured_piece is not None:
+                        capturer = "white" if position_board.turn == chess.WHITE else "black"
+                        captured_pieces[capturer].append(captured_piece.symbol())
                 position_board.push(move)
                 checked_king = position_board.king(position_board.turn)
                 positions.append(
                     {
                         "fen": position_board.board_fen(),
+                        "captured_pieces": {
+                            color: list(pieces)
+                            for color, pieces in captured_pieces.items()
+                        },
                         "turn_color": (
                             "white" if position_board.turn == chess.WHITE else "black"
                         ),
@@ -266,6 +285,7 @@ def create_app(engine, board=None, player_data_path=None):
                 "history": list(game.history),
                 "ply": len(board.move_stack),
                 "positions": positions,
+                "captured_pieces": positions[-1]["captured_pieces"],
                 "maia_elo": game.maia_elo,
                 "maia_name": game.maia_name,
                 "player_elo": game.player_elo if game.started else ladder.rating_for(

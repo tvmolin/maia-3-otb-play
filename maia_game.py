@@ -257,10 +257,8 @@ class GameSession:
         if normalized == "help":
             return {"action": "help", "message": HELP_TEXT}
         if normalized == "go":
-            with self._think_state_lock:
-                if self._maia_turn_active:
-                    self._think_skip.set()
-                    return {"action": "go", "message": "Skipping the remaining think time."}
+            if self.skip_maia_think():
+                return {"action": "go", "message": "Skipping the remaining think time."}
             raise ValueError("Maia is not thinking.")
 
         with self._think_state_lock:
@@ -296,6 +294,13 @@ class GameSession:
                 raise ValueError("Maia is already thinking.")
             self._think_skip.clear()
             self._maia_turn_active = True
+
+    def skip_maia_think(self):
+        with self._think_state_lock:
+            if not self._maia_turn_active:
+                return False
+            self._think_skip.set()
+            return True
 
     def apply_player_move(self, text):
         with self.lock:

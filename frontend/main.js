@@ -7,6 +7,7 @@ import './style.css';
 const boardElement = document.querySelector('#board');
 const setupForm = document.querySelector('#setup');
 const timeControlInput = document.querySelector('#time-control');
+const playInstantlyInput = document.querySelector('#play-instantly');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
 const moveFirstButton = document.querySelector('#move-first');
@@ -252,6 +253,7 @@ function renderState(state) {
     check_square: state.check_square,
   };
   const canMove = Boolean(state.can_move) && !requestPending && !reviewing;
+  playInstantlyInput.checked = Boolean(state.play_instantly);
   opponentDisplay.hidden = !state.started;
   playerDisplay.hidden = !state.started;
   opponentName.textContent = state.maia_name || 'Maia';
@@ -694,6 +696,25 @@ function onBoardMove(origin, destination, metadata) {
   }
   void sendMove(moveKey, capturedPiece, givesCheck);
 }
+
+playInstantlyInput.addEventListener('change', async () => {
+  const requestedValue = playInstantlyInput.checked;
+  try {
+    const response = await fetch('/api/play-instantly', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: requestedValue }),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not update Maia move timing.');
+    }
+    playInstantlyInput.checked = data.play_instantly;
+  } catch (error) {
+    playInstantlyInput.checked = Boolean(currentState?.play_instantly);
+    statusElement.textContent = error.message;
+  }
+});
 
 setupForm.addEventListener('submit', async (event) => {
   event.preventDefault();

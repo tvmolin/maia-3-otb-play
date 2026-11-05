@@ -470,6 +470,24 @@ button {
   font: inherit;
 }
 
+.match-setting-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 12px 0;
+  color: #dce7dc;
+  font-size: 0.87rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.match-setting-checkbox input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 button {
   cursor: pointer;
   font-weight: 600;

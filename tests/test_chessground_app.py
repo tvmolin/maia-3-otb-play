@@ -79,6 +79,11 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertNotIn(b'id="player-elo"', response.data)
         self.assertIn(b'id="opponent-display"', response.data)
         self.assertIn(b'id="player-display"', response.data)
+        self.assertIn(b'id="play-instantly"', response.data)
+        self.assertGreater(
+            response.data.index(b'id="play-instantly"'),
+            response.data.index(b'id="actions-panel"'),
+        )
         self.assertIn(b'id="result-summary"', response.data)
         self.assertIn(b'id="result-title"', response.data)
         self.assertIn(b'id="result-rating"', response.data)
@@ -666,6 +671,28 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertAlmostEqual(think_times["3+2"], 0.6)
         self.assertAlmostEqual(think_times["15+10"], 3.0)
+
+    def test_play_instantly_skips_maias_move_delay(self):
+        self.client.post("/api/start", json={"color": "white"})
+        response = self.client.post("/api/play-instantly", json={"enabled": True})
+        with patch.object(GameSession, "wait_for_maia_think") as wait:
+            move_response = self.client.post(
+                "/api/move",
+                json={"move": "e2e4", "expected_ply": 0},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json["play_instantly"])
+        self.assertTrue(move_response.json["state"]["play_instantly"])
+        wait.assert_called_once_with(0.0)
+
+    def test_play_instantly_must_be_a_boolean(self):
+        response = self.client.post(
+            "/api/play-instantly",
+            json={"enabled": "true"},
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_promotion_choices_are_returned_for_promotion_moves(self):
         board = chess.Board("7k/P7/8/8/8/8/8/7K w - - 0 1")

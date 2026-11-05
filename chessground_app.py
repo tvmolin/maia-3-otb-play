@@ -307,6 +307,9 @@ def create_app(engine, board=None, player_data_path=None):
                 ),
                 "maia_temperature": game.temperature if game.started else None,
                 "time_control": app.config.get("CHESSGROUND_TIME_CONTROL"),
+                "play_instantly": app.config.get(
+                    "CHESSGROUND_PLAY_INSTANTLY", False
+                ),
                 "termination": termination,
                 "clock": clock.data(now),
             }
@@ -320,8 +323,15 @@ def create_app(engine, board=None, player_data_path=None):
 
     def play_maia_turn():
         turn = game.choose_maia_move()
-        think_seconds = turn.think_seconds
-        if app.config.get("CHESSGROUND_RATING_CATEGORY") == "blitz":
+        think_seconds = (
+            0.0
+            if app.config.get("CHESSGROUND_PLAY_INSTANTLY")
+            else turn.think_seconds
+        )
+        if (
+            think_seconds > 0
+            and app.config.get("CHESSGROUND_RATING_CATEGORY") == "blitz"
+        ):
             think_seconds *= BLITZ_THINK_TIME_FACTOR
         game.wait_for_maia_think(think_seconds)
         now = time.monotonic()
@@ -462,6 +472,7 @@ def create_app(engine, board=None, player_data_path=None):
                 base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_RATING_CATEGORY"] = category
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
+                app.config["CHESSGROUND_PLAY_INSTANTLY"] = False
                 app.config["CHESSGROUND_TEMPERATURE"] = temperature
                 app.config["CHESSGROUND_MATCH_ID"] = str(uuid.uuid4())
                 app.config.pop("CHESSGROUND_RATING_RECORD", None)
@@ -481,6 +492,7 @@ def create_app(engine, board=None, player_data_path=None):
                     clock.stop()
                     clock_history.clear()
                     app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                    app.config.pop("CHESSGROUND_PLAY_INSTANTLY", None)
                     app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
                     app.config.pop("CHESSGROUND_TEMPERATURE", None)
                     app.config.pop("CHESSGROUND_MATCH_ID", None)
@@ -490,6 +502,19 @@ def create_app(engine, board=None, player_data_path=None):
                     return state_response(503, "The engine failed to make its opening move.")
             save_finished_game()
         return state_response()
+
+    @app.post("/api/play-instantly")
+    def set_play_instantly():
+        payload = request.get_json(silent=True)
+        enabled = payload.get("enabled") if isinstance(payload, dict) else None
+        if not isinstance(enabled, bool):
+            return jsonify({"error": "Choose whether Maia should play instantly."}), 400
+        if not game.started:
+            return jsonify({"error": "Start a match before changing Maia move timing."}), 409
+        app.config["CHESSGROUND_PLAY_INSTANTLY"] = enabled
+        if enabled:
+            game.skip_maia_think()
+        return jsonify({"play_instantly": enabled})
 
     @app.post("/api/move")
     def submit_move():
@@ -582,6 +607,7 @@ def create_app(engine, board=None, player_data_path=None):
                 clock.stop()
                 clock_history.clear()
                 app.config.pop("CHESSGROUND_TIME_CONTROL", None)
+                app.config.pop("CHESSGROUND_PLAY_INSTANTLY", None)
                 app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
                 app.config.pop("CHESSGROUND_TEMPERATURE", None)
                 app.config.pop("CHESSGROUND_MATCH_ID", None)

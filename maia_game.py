@@ -163,7 +163,14 @@ class GameSession:
     def player_color_name(self):
         return "white" if self.player_color == chess.WHITE else "black"
 
-    def start(self, player_color, maia_elo=None, player_elo=None, temperature=None):
+    def start(
+        self,
+        player_color,
+        maia_elo=None,
+        player_elo=None,
+        temperature=None,
+        engine_maia_elo=None,
+    ):
         with self.lock:
             if self.started:
                 if self.player_color == player_color:
@@ -173,7 +180,9 @@ class GameSession:
                 raise ValueError("Choose White or Black.")
             maia_elo = self._pending_maia_elo if maia_elo is None else maia_elo
             player_elo = self._pending_player_elo if player_elo is None else player_elo
+            engine_maia_elo = maia_elo if engine_maia_elo is None else engine_maia_elo
             self.validate_elos(maia_elo, player_elo)
+            self.validate_elos(engine_maia_elo, player_elo)
             if temperature is not None and (
                 isinstance(temperature, bool)
                 or not isinstance(temperature, (int, float))
@@ -181,7 +190,7 @@ class GameSession:
                 or temperature < 0
             ):
                 raise ValueError("Temperature must be a non-negative number.")
-            options = {"SelfElo": maia_elo, "OppoElo": player_elo}
+            options = {"SelfElo": engine_maia_elo, "OppoElo": player_elo}
             if temperature is not None and temperature != self.temperature:
                 options["Temperature"] = str(temperature)
             if options:

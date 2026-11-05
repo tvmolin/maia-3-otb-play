@@ -186,6 +186,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.json["state"]["rating_category"], "blitz")
         self.assertEqual(response.json["state"]["player_elo"], 800)
         self.assertEqual(response.json["state"]["maia_elo"], 820)
+        self.assertNotIn("engine_maia_elo", response.json["state"])
         self.assertEqual(response.json["state"]["maia_temperature"], 0.7)
         self.assertRegex(
             response.json["state"]["maia_name"],
@@ -193,7 +194,7 @@ class ChessgroundAppTests(unittest.TestCase):
         )
         self.assertEqual(
             self.engine.configured[-1],
-            {"SelfElo": 820, "OppoElo": 800, "Temperature": "0.7"},
+            {"SelfElo": 620, "OppoElo": 800, "Temperature": "0.7"},
         )
         self.assertEqual(
             response.json["state"]["clock"]["remaining_ms"],
@@ -227,11 +228,11 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(state["maia_temperature"], 0.9)
         self.assertRegex(state["maia_name"], r"^[A-Z][A-Za-z]+[A-Z][A-Za-z]+\d{4}$")
         color_picker.assert_called_once_with((chess.WHITE, chess.BLACK))
-        rating_picker.assert_called_once_with(700, 900)
+        rating_picker.assert_called_once_with(800, 900)
         temperature_picker.assert_called_once_with(0.5, 0.9)
         self.assertEqual(
             self.engine.configured[-1],
-            {"SelfElo": 900, "OppoElo": 800, "Temperature": "0.9"},
+            {"SelfElo": 700, "OppoElo": 800, "Temperature": "0.9"},
         )
 
     def test_find_match_configures_both_elos_for_a_persisted_lower_rating(self):
@@ -249,7 +250,7 @@ class ChessgroundAppTests(unittest.TestCase):
             player_data_path=self.player_data_path,
         ).test_client()
 
-        with patch("chessground_app.random.randint", return_value=600):
+        with patch("chessground_app.random.randint", return_value=800) as rating_picker:
             response = client.post(
                 "/api/find-match",
                 json={"time_control": "3+2"},
@@ -257,11 +258,12 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["state"]["player_elo"], 600)
-        self.assertEqual(response.json["state"]["maia_elo"], 600)
+        self.assertEqual(response.json["state"]["maia_elo"], 800)
         self.assertEqual(
             self.engine.configured[-1],
             {"SelfElo": 600, "OppoElo": 600, "Temperature": "0.7"},
         )
+        rating_picker.assert_called_once_with(800, 800)
 
     def test_finished_match_updates_and_persists_player_rating_once(self):
         with patch.object(
@@ -288,6 +290,11 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(stored["ratings"], {"blitz": 781, "rapid": 800})
         self.assertEqual(stored["matches"]["blitz"][0]["outcome"], "loss")
         self.assertEqual(
+            stored["matches"]["blitz"][0]["maia_elo"],
+            state["maia_elo"],
+        )
+        self.assertNotIn("engine_maia_elo", stored["matches"]["blitz"][0])
+        self.assertEqual(
             stored["matches"]["blitz"][0]["opponent_name"],
             state["maia_name"],
         )
@@ -307,10 +314,10 @@ class ChessgroundAppTests(unittest.TestCase):
                 "/api/find-match", json={"time_control": "3+2"}
             )
         self.assertEqual(next_match.json["state"]["player_elo"], 781)
-        rating_picker.assert_called_once_with(681, 881)
+        rating_picker.assert_called_once_with(800, 881)
         self.assertEqual(
             restarted_engine.configured[-1],
-            {"SelfElo": 820, "OppoElo": 781, "Temperature": "0.7"},
+            {"SelfElo": 620, "OppoElo": 781, "Temperature": "0.7"},
         )
 
     def test_start_supports_rapid_time_control_and_rapid_rating(self):

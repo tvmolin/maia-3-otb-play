@@ -16,6 +16,9 @@ from maia_game import GameSession, create_engine
 MAIA_ELO = 800
 PLAYER_ELO = DEFAULT_PLAYER_ELO
 MATCH_ELO_OFFSET = 100
+MAIA_ENGINE_ELO_OFFSET = 200
+MIN_MAIA_ENGINE_ELO = 600
+MAX_MAIA_ENGINE_ELO = 5000 - MAIA_ENGINE_ELO_OFFSET
 MATCH_TEMPERATURE_RANGE = (0.5, 0.9)
 BLITZ_THINK_TIME_FACTOR = 0.2
 HOST = "127.0.0.1"
@@ -448,16 +451,24 @@ def create_app(engine, board=None, player_data_path=None):
                 return state_response(409, "Finish the current match before finding another.")
             color = random.choice((chess.WHITE, chess.BLACK))
             player_elo = ladder.rating_for(category)
-            maia_elo = random.randint(
-                max(0, player_elo - MATCH_ELO_OFFSET),
-                min(5000, player_elo + MATCH_ELO_OFFSET),
+            min_opponent_elo = max(
+                MIN_MAIA_ENGINE_ELO + MAIA_ENGINE_ELO_OFFSET,
+                player_elo - MATCH_ELO_OFFSET,
             )
+            max_opponent_elo = min(
+                MAX_MAIA_ENGINE_ELO + MAIA_ENGINE_ELO_OFFSET,
+                player_elo + MATCH_ELO_OFFSET,
+            )
+            max_opponent_elo = max(min_opponent_elo, max_opponent_elo)
+            maia_elo = random.randint(min_opponent_elo, max_opponent_elo)
+            engine_maia_elo = maia_elo - MAIA_ENGINE_ELO_OFFSET
             temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
             opponent_name = ladder.generate_opponent_name()
             try:
                 started_now = game.start(
                     color,
                     maia_elo=maia_elo,
+                    engine_maia_elo=engine_maia_elo,
                     player_elo=player_elo,
                     temperature=temperature,
                 )
@@ -634,7 +645,10 @@ def create_app(engine, board=None, player_data_path=None):
 
 def main():
     print("Loading Maia model...", flush=True)
-    engine = create_engine(MAIA_ELO, PLAYER_ELO)
+    engine = create_engine(
+        MAIA_ELO - MAIA_ENGINE_ELO_OFFSET,
+        PLAYER_ELO,
+    )
     app = create_app(engine)
     url = f"http://{HOST}:{PORT}/"
     print(f"Starting the Chessground app at {url}", flush=True)

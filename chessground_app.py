@@ -368,6 +368,37 @@ def create_app(engine, board=None, player_data_path=None):
             matches = list(ladder.matches_for(category))
             player_elo = ladder.rating_for(category)
 
+        color_stats = {
+            color: {"games": 0, "wins": 0, "draws": 0, "losses": 0, "score": 0}
+            for color in ("white", "black")
+        }
+        for match in matches:
+            color = match.get("player_color")
+            if color not in color_stats:
+                continue
+            outcome = match.get("outcome")
+            if outcome not in ("win", "draw", "loss"):
+                result = match.get("result")
+                if result == "1/2-1/2":
+                    outcome = "draw"
+                elif result in ("1-0", "0-1"):
+                    player_won = (result == "1-0") == (color == "white")
+                    outcome = "win" if player_won else "loss"
+                else:
+                    continue
+            stats = color_stats[color]
+            stats["games"] += 1
+            stats[{"win": "wins", "draw": "draws", "loss": "losses"}[outcome]] += 1
+            stats["score"] += {"win": 1, "draw": 0.5, "loss": 0}[outcome]
+        for stats in color_stats.values():
+            games = stats["games"]
+            stats["win_percentage"] = (
+                round(stats["wins"] * 100 / games, 1) if games else None
+            )
+            stats["score_percentage"] = (
+                round(stats["score"] * 100 / games, 1) if games else None
+            )
+
         ratings = [matches[0]["player_elo_before"]] if matches else [player_elo]
         ratings.extend(match["player_elo_after"] for match in matches)
         low = min(ratings)
@@ -408,6 +439,7 @@ def create_app(engine, board=None, player_data_path=None):
             category=category,
             player_elo=player_elo,
             matches=reversed(matches),
+            color_stats=color_stats,
             rating_points=rating_points,
             rating_ticks=rating_ticks,
             chart_min=chart_min,

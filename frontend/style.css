@@ -387,6 +387,10 @@ cg-board {
   overflow-x: auto;
 }
 
+.color-stats {
+  margin-bottom: 20px;
+}
+
 .profile-table {
   width: 100%;
   border-collapse: collapse;

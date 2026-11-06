@@ -155,6 +155,21 @@ class ChessgroundAppTests(unittest.TestCase):
                 "pgn_file": "newer.pgn",
             }
         )
+        ladder.record_match(
+            {
+                "match_id": "draw",
+                "finished_at": "2026-11-05T12:00:00Z",
+                "result": "1/2-1/2",
+                "player_color": "white",
+                "rating_category": "blitz",
+                "opponent_name": "DrawOpponent123",
+                "maia_elo": 800,
+                "temperature": 0.7,
+                "time_control": "3+2",
+                "plies": 40,
+                "pgn_file": "draw.pgn",
+            }
+        )
 
         response = self.client.get("/profile")
 
@@ -163,6 +178,15 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b"TacticalLlama4821 (900)", response.data)
         self.assertIn(b'data-local-time datetime="2026-11-04T12:00:00Z"', response.data)
         self.assertIn(b"Maia (800)", response.data)
+        self.assertIn(b"Piece color", response.data)
+        self.assertIn(b"Results by piece color", response.data)
+        self.assertIn(b"<th scope=\"row\">White</th>", response.data)
+        self.assertIn(b"<th scope=\"row\">Black</th>", response.data)
+        self.assertIn(b"1-1-0", response.data)
+        self.assertIn(b"0-0-1", response.data)
+        self.assertIn(b"50.0%", response.data)
+        self.assertIn(b"75.0%", response.data)
+        self.assertIn(b"0.0%", response.data)
         self.assertIn(b"5+5", response.data)
         self.assertLess(
             response.data.index(b"TacticalLlama4821 (900)"),
@@ -173,6 +197,41 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b"Rapid rating progress", rapid_response.data)
         self.assertIn(b"No matches yet", rapid_response.data)
         self.assertNotIn(b"TacticalLlama4821", rapid_response.data)
+
+    def test_profile_reads_legacy_matches_without_piece_color(self):
+        ladder = self.client.application.config["CHESSGROUND_LADDER"]
+        ladder.record_match(
+            {
+                "match_id": "legacy",
+                "finished_at": "2026-11-04T12:00:00Z",
+                "result": "1-0",
+                "player_color": "white",
+                "rating_category": "blitz",
+                "maia_elo": 800,
+                "temperature": 0.7,
+                "time_control": "5+5",
+                "plies": 20,
+                "pgn_file": "legacy.pgn",
+            }
+        )
+        saved_data = json.loads(self.player_data_path.read_text(encoding="utf-8"))
+        del saved_data["matches"]["blitz"][0]["player_color"]
+        self.player_data_path.write_text(
+            json.dumps(saved_data, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        original_save = self.player_data_path.read_bytes()
+
+        legacy_client = create_app(
+            FakeEngine(),
+            player_data_path=self.player_data_path,
+        ).test_client()
+        response = legacy_client.get("/profile")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b">Unknown</td>", response.data)
+        self.assertIn(b"0-0-0", response.data)
+        self.assertEqual(self.player_data_path.read_bytes(), original_save)
 
     def test_start_exposes_legal_destinations(self):
         response = self.client.post(

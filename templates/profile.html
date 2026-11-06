@@ -47,12 +47,39 @@
       </section>
       <section class="panel" aria-labelledby="history-title">
         <h2 id="history-title">{{ category|capitalize }} match history</h2>
+        <h3 id="color-stats-title">Results by piece color</h3>
+        <div class="profile-table-wrap">
+          <table class="profile-table color-stats" aria-labelledby="color-stats-title">
+            <thead>
+              <tr>
+                <th scope="col">Color</th>
+                <th scope="col">Games</th>
+                <th scope="col">W-D-L</th>
+                <th scope="col">Win rate</th>
+                <th scope="col">Score rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for color in ("white", "black") %}
+              {% set stats = color_stats[color] %}
+              <tr>
+                <th scope="row">{{ color|capitalize }}</th>
+                <td>{{ stats.games }}</td>
+                <td>{{ stats.wins }}-{{ stats.draws }}-{{ stats.losses }}</td>
+                <td>{% if stats.win_percentage is not none %}{{ "%.1f%%"|format(stats.win_percentage) }}{% else %}&mdash;{% endif %}</td>
+                <td>{% if stats.score_percentage is not none %}{{ "%.1f%%"|format(stats.score_percentage) }}{% else %}&mdash;{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
         <div class="profile-table-wrap">
           <table class="profile-table">
             <thead>
               <tr>
                 <th scope="col">Date</th>
                 <th scope="col">Opponent</th>
+                <th scope="col">Piece color</th>
                 <th scope="col">Result</th>
                 <th scope="col">Time control</th>
                 <th scope="col">Rating change</th>
@@ -64,6 +91,7 @@
               <tr>
                 <td><time data-local-time datetime="{{ match.finished_at }}">{{ match.finished_at }}</time></td>
                 <td>{{ match.opponent_name|default("Maia") }} ({{ match.maia_elo }})</td>
+                <td>{{ match.player_color|default("Unknown")|capitalize }}</td>
                 <td>{{ match.outcome|capitalize }}</td>
                 <td>{{ match.time_control }}</td>
                 <td class="{% if match.rating_change > 0 %}rating-positive{% elif match.rating_change < 0 %}rating-negative{% endif %}">
@@ -73,7 +101,7 @@
               </tr>
               {% else %}
               <tr>
-                <td class="empty-history" colspan="6">No matches yet. Play a match to start your history.</td>
+                <td class="empty-history" colspan="7">No matches yet. Play a match to start your history.</td>
               </tr>
               {% endfor %}
             </tbody>

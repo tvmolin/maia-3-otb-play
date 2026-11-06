@@ -69,12 +69,15 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Find match", response.data)
         self.assertIn(b'id="time-control"', response.data)
+        self.assertIn(b'id="player-color"', response.data)
+        self.assertIn(b'<option value="random" selected>Random</option>', response.data)
+        self.assertIn(b'<option value="white">White</option>', response.data)
+        self.assertIn(b'<option value="black">Black</option>', response.data)
         self.assertIn(b'<optgroup label="Blitz">', response.data)
         self.assertIn(b'<optgroup label="Rapid">', response.data)
         for control in (b"3+2", b"5+5", b"15+10", b"20+10"):
             self.assertIn(control, response.data)
         self.assertNotIn(b"Custom", response.data)
-        self.assertNotIn(b'id="player-color"', response.data)
         self.assertNotIn(b'id="maia-elo"', response.data)
         self.assertNotIn(b'id="player-elo"', response.data)
         self.assertIn(b'id="opponent-display"', response.data)
@@ -271,10 +274,10 @@ class ChessgroundAppTests(unittest.TestCase):
             response = self.client.post(
                 "/api/find-match",
                 json={
-                    "color": "white",
                     "maia_elo": 0,
                     "player_elo": 5000,
                     "temperature": 5,
+                    "color": "random",
                     "time_control": "3+2",
                 },
             )
@@ -293,6 +296,28 @@ class ChessgroundAppTests(unittest.TestCase):
             self.engine.configured[-1],
             {"SelfElo": 700, "OppoElo": 800, "Temperature": "0.9"},
         )
+
+    def test_find_match_uses_selected_piece_color(self):
+        self.engine.moves = ["d4"]
+        for requested_color, expected_color in (("white", "white"), ("black", "black")):
+            with self.subTest(color=requested_color):
+                response = self.client.post(
+                    "/api/find-match",
+                    json={"color": requested_color, "time_control": "3+2"},
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json["state"]["player_color"], expected_color)
+                reset_response = self.client.post("/api/new-game")
+                self.assertEqual(reset_response.status_code, 200)
+
+    def test_find_match_rejects_unsupported_piece_color(self):
+        response = self.client.post(
+            "/api/find-match",
+            json={"color": "green", "time_control": "3+2"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("piece color", response.json["error"])
 
     def test_find_match_configures_both_elos_for_a_persisted_lower_rating(self):
         self.player_data_path.write_text(

@@ -7,6 +7,7 @@ import './style.css';
 const boardElement = document.querySelector('#board');
 const setupForm = document.querySelector('#setup');
 const timeControlInput = document.querySelector('#time-control');
+const playerColorInput = document.querySelector('#player-color');
 const playInstantlyInput = document.querySelector('#play-instantly');
 const statusElement = document.querySelector('#status');
 const historyElement = document.querySelector('#move-history');
@@ -728,6 +729,7 @@ setupForm.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         time_control: timeControlInput.value,
+        color: playerColorInput.value,
       }),
     });
     const data = await readJson(response);

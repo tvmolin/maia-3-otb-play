@@ -477,11 +477,18 @@ def create_app(engine, board=None, player_data_path=None):
         )
         if category is None:
             return state_response(400, "Choose a supported time control.")
+        requested_color = payload.get("color", "random")
+        if requested_color not in ("random", "white", "black"):
+            return state_response(400, "Choose a supported piece color.")
         time_control_values = TIME_CONTROLS[category][time_control]
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             if game.started:
                 return state_response(409, "Finish the current match before finding another.")
-            color = random.choice((chess.WHITE, chess.BLACK))
+            color = (
+                random.choice((chess.WHITE, chess.BLACK))
+                if requested_color == "random"
+                else requested_color == "white"
+            )
             player_elo = ladder.rating_for(category)
             min_opponent_elo = max(
                 MIN_MAIA_ENGINE_ELO + MAIA_ENGINE_ELO_OFFSET,

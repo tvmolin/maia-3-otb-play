@@ -156,6 +156,7 @@ class ChessgroundAppTests(unittest.TestCase):
                 "time_control": "20+10",
                 "plies": 30,
                 "pgn_file": "newer.pgn",
+                "pgn": "1. e4 e5 1-0",
             }
         )
         ladder.record_match(
@@ -179,6 +180,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"class=\"rating-chart-line\"", response.data)
         self.assertIn(b"TacticalLlama4821 (900)", response.data)
+        self.assertIn(b'data-pgn="1. e4 e5 1-0"', response.data)
         self.assertIn(b'data-local-time datetime="2026-11-04T12:00:00Z"', response.data)
         self.assertIn(b"Maia (800)", response.data)
         self.assertIn(b"Piece color", response.data)
@@ -191,6 +193,9 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertIn(b"75.0%", response.data)
         self.assertIn(b"0.0%", response.data)
         self.assertIn(b"5+5", response.data)
+        self.assertIn(b'class="copy-match-pgn" data-pgn="', response.data)
+        self.assertIn(b">Copy PGN</button>", response.data)
+        self.assertIn(b'aria-label="PGN to copy manually"', response.data)
         self.assertLess(
             response.data.index(b"TacticalLlama4821 (900)"),
             response.data.index(b"Maia (800)"),
@@ -223,6 +228,10 @@ class ChessgroundAppTests(unittest.TestCase):
             json.dumps(saved_data, indent=2) + "\n",
             encoding="utf-8",
         )
+        (self.player_data_path.parent / "legacy.pgn").write_text(
+            '[Event "Legacy match"]\n\n1. e4 e5 1-0\n',
+            encoding="utf-8",
+        )
         original_save = self.player_data_path.read_bytes()
 
         legacy_client = create_app(
@@ -234,6 +243,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b">Unknown</td>", response.data)
         self.assertIn(b"0-0-0", response.data)
+        self.assertIn(b'data-pgn="[Event &#34;Legacy match&#34;]', response.data)
         self.assertEqual(self.player_data_path.read_bytes(), original_save)
 
     def test_start_exposes_legal_destinations(self):
@@ -350,15 +360,13 @@ class ChessgroundAppTests(unittest.TestCase):
         rating_picker.assert_called_once_with(800, 800)
 
     def test_finished_match_updates_and_persists_player_rating_once(self):
-        with patch.object(
-            GameSession,
-            "save_pgn_file",
-            return_value=Path("match.pgn"),
-        ):
+        with patch("maia_game.save_pgn", return_value=Path("match.pgn")) as save_pgn:
             self.client.post("/api/find-match", json={"time_control": "3+2"})
             response = self.client.post("/api/command", json={"command": "resign"})
             refreshed = self.client.get("/api/state")
 
+        save_pgn.assert_called_once()
+        self.assertIn('[Result "0-1"]', save_pgn.call_args.args[0])
         self.assertEqual(response.status_code, 200)
         state = response.json["state"]
         self.assertEqual(state["player_elo"], 781)
@@ -383,6 +391,8 @@ class ChessgroundAppTests(unittest.TestCase):
             state["maia_name"],
         )
         self.assertEqual(stored["matches"]["blitz"][0]["k_factor"], 40)
+        self.assertIn('[Result "0-1"]', stored["matches"]["blitz"][0]["pgn"])
+        self.assertIn("1.", stored["matches"]["blitz"][0]["pgn"])
 
         restarted_engine = FakeEngine()
         restarted = create_app(

@@ -131,6 +131,9 @@ def create_app(engine, board=None, player_data_path=None):
         pgn_path = game.saved_pgn_path
         if pgn_path is None:
             pgn_path = game.save_pgn_file()
+        pgn = game.saved_pgn_text
+        if pgn is None:
+            pgn = game.build_pgn(game.result)
         if app.config.get("CHESSGROUND_RATING_RECORD") is None:
             match = {
                 "match_id": app.config["CHESSGROUND_MATCH_ID"],
@@ -144,6 +147,7 @@ def create_app(engine, board=None, player_data_path=None):
                 "time_control": app.config["CHESSGROUND_TIME_CONTROL"],
                 "plies": len(game.board.move_stack),
                 "pgn_file": pgn_path.name,
+                "pgn": pgn,
             }
             record = ladder.record_match(match)
             game.player_elo = record["player_elo_after"]
@@ -365,8 +369,18 @@ def create_app(engine, board=None, player_data_path=None):
         if category not in RATING_CATEGORIES:
             return "Choose blitz or rapid.", 404
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
-            matches = list(ladder.matches_for(category))
+            matches = [dict(match) for match in ladder.matches_for(category)]
             player_elo = ladder.rating_for(category)
+        games_dir = ladder.path.parent.resolve()
+        for match in matches:
+            if isinstance(match.get("pgn"), str) and match["pgn"]:
+                continue
+            pgn_file = match.get("pgn_file")
+            if not isinstance(pgn_file, str) or Path(pgn_file).name != pgn_file:
+                continue
+            pgn_path = (games_dir / pgn_file).resolve()
+            if pgn_path.parent == games_dir and pgn_path.is_file():
+                match["pgn"] = pgn_path.read_text(encoding="utf-8").rstrip()
 
         color_stats = {
             color: {"games": 0, "wins": 0, "draws": 0, "losses": 0, "score": 0}

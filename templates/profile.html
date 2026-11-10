@@ -84,6 +84,7 @@
                 <th scope="col">Time control</th>
                 <th scope="col">Rating change</th>
                 <th scope="col">Rating</th>
+                <th scope="col">PGN</th>
               </tr>
             </thead>
             <tbody>
@@ -98,15 +99,24 @@
                   {{ "%+d"|format(match.rating_change) }}
                 </td>
                 <td>{{ match.player_elo_after }}</td>
+                <td>
+                  {% if match.pgn %}
+                  <button type="button" class="copy-match-pgn" data-pgn="{{ match.pgn }}">Copy PGN</button>
+                  {% else %}
+                  <span>No PGN saved</span>
+                  {% endif %}
+                </td>
               </tr>
               {% else %}
               <tr>
-                <td class="empty-history" colspan="7">No matches yet. Play a match to start your history.</td>
+                <td class="empty-history" colspan="8">No matches yet. Play a match to start your history.</td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
+        <p id="pgn-copy-status" role="status" aria-live="polite"></p>
+        <textarea id="pgn-copy-fallback" aria-label="PGN to copy manually" readonly hidden></textarea>
       </section>
     </div>
   </main>

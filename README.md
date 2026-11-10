@@ -220,8 +220,9 @@ and category-specific rating changes (K=40) are stored in
 randomly generated, unique Maia username, shown alongside the board and saved
 in match history and PGN. Draws count as half a point.
 Open **Profile** to switch between your Blitz and Rapid rating graphs and match
-histories. The backend validates moves and remains the source of truth for game
-state.
+histories. Completed PGNs are saved with each match-history entry and can be
+copied from its row. The backend validates moves and remains the source of truth
+for game state.
 The app uses the 79M model, which must be downloaded before play. Preset
 The available game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
 Both clocks are enforced by the server, including Maia's engine and think time.

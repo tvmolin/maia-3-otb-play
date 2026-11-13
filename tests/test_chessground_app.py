@@ -82,6 +82,8 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertNotIn(b'id="player-elo"', response.data)
         self.assertIn(b'id="opponent-display"', response.data)
         self.assertIn(b'id="player-display"', response.data)
+        self.assertIn(b'id="opponent-material-advantage"', response.data)
+        self.assertIn(b'id="player-material-advantage"', response.data)
         self.assertIn(b'id="play-instantly"', response.data)
         self.assertGreater(
             response.data.index(b'id="play-instantly"'),

@@ -23,6 +23,8 @@ const playerName = document.querySelector('#player-name');
 const playerRating = document.querySelector('#player-rating');
 const opponentCapturedPieces = document.querySelector('#opponent-captured-pieces');
 const playerCapturedPieces = document.querySelector('#player-captured-pieces');
+const opponentMaterialAdvantage = document.querySelector('#opponent-material-advantage');
+const playerMaterialAdvantage = document.querySelector('#player-material-advantage');
 const clockElements = {
   white: document.querySelector('#white-clock'),
   black: document.querySelector('#black-clock'),
@@ -52,6 +54,8 @@ let promotionMove;
 let clockState;
 let audioContext;
 let lastCheckSoundPly = null;
+
+const materialValues = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 
 const ground = Chessground(boardElement, {
   fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
@@ -156,6 +160,41 @@ function renderCapturedPieces(element, pieces = []) {
   );
 }
 
+function getMaterialDifference(fen) {
+  let difference = 0;
+  for (const piece of fen.split(' ')[0]) {
+    const value = materialValues[piece.toLowerCase()] || 0;
+    difference += piece === piece.toUpperCase() ? value : -value;
+  }
+  return difference;
+}
+
+function renderMaterialAdvantage(fen, playerColor, pendingCapture = null) {
+  let difference = getMaterialDifference(fen);
+  if (pendingCapture) {
+    const value = materialValues[pendingCapture.toLowerCase()] || 0;
+    difference += playerColor === 'white' ? value : -value;
+  }
+  const playerAdvantage = playerColor === 'white' ? difference : -difference;
+  const playerScore = Math.max(0, playerAdvantage);
+  const opponentScore = Math.max(0, -playerAdvantage);
+
+  playerMaterialAdvantage.hidden = playerScore === 0;
+  playerMaterialAdvantage.textContent = playerScore ? `+${playerScore}` : '';
+  playerMaterialAdvantage.setAttribute(
+    'aria-label',
+    playerScore ? `${playerScore} point material advantage` : 'No material advantage',
+  );
+  opponentMaterialAdvantage.hidden = opponentScore === 0;
+  opponentMaterialAdvantage.textContent = opponentScore ? `+${opponentScore}` : '';
+  opponentMaterialAdvantage.setAttribute(
+    'aria-label',
+    opponentScore
+      ? `${opponentScore} point material advantage`
+      : 'No material advantage',
+  );
+}
+
 function getPieceAtFen(fen, square) {
   const [file, rank] = square;
   const row = 8 - Number(rank);
@@ -207,6 +246,7 @@ function optimisticallyShowCapture(piece) {
   };
   capturedPieces[currentState.player_color].push(piece);
   renderCapturedPieces(playerCapturedPieces, capturedPieces[currentState.player_color]);
+  renderMaterialAdvantage(currentState.fen, currentState.player_color, piece);
 }
 
 function renderState(state) {
@@ -269,6 +309,7 @@ function renderState(state) {
   const opponentColor = playerColor === 'white' ? 'black' : 'white';
   renderCapturedPieces(playerCapturedPieces, capturedPieces[playerColor]);
   renderCapturedPieces(opponentCapturedPieces, capturedPieces[opponentColor]);
+  renderMaterialAdvantage(position.fen, playerColor);
   const playerOutcome = getPlayerOutcome(state);
   if (previousState && !previousState.started && state.started) {
     playNewMatchSound();

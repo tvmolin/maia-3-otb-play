@@ -1,10 +1,25 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn import RMSNorm
 import math
 import chess
 import numpy as np
+
+if hasattr(nn, "RMSNorm"):
+    RMSNorm = nn.RMSNorm
+else:
+    class RMSNorm(nn.Module):
+        def __init__(self, normalized_shape: int, eps: float | None = None):
+            super().__init__()
+            self.normalized_shape = (normalized_shape,)
+            self.eps = eps
+            self.weight = nn.Parameter(torch.ones(normalized_shape))
+
+        def forward(self, x: torch.Tensor) -> torch.Tensor:
+            eps = self.eps if self.eps is not None else torch.finfo(x.dtype).eps
+            variance = x.pow(2).mean(dim=-1, keepdim=True)
+            return x * torch.rsqrt(variance + eps) * self.weight
+
 
 def make_bias_map():
     # 15 * 15 in units for distance pairs to 64 * 64 pairs of squares

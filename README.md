@@ -186,14 +186,57 @@ The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"p
 ## Play Maia on a Chessground Board
 
 The separate Chessground interface is for playing Maia on this computer; it
-does not replace or change the OTB web app above. Build its frontend once from
-the repository root:
+does not replace or change the OTB web app above.
+
+### macOS (Intel and Apple Silicon)
+
+Install Node.js/npm and [uv](https://docs.astral.sh/uv/getting-started/installation/)
+first. `uv` installs a Python runtime and creates the project environment
+without changing the system Python. Reopen the terminal after installing `uv`
+if the `uv` command is not yet on your PATH. From the repository root:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.12
+uv venv --clear --python 3.12 .venv
+```
+
+Install the project dependencies. On Apple Silicon:
+
+```sh
+uv pip install --python .venv/bin/python -e .
+```
+
+On Intel Macs, use the NumPy constraint shown here:
+
+```sh
+uv pip install --python .venv/bin/python -e . 'numpy<2'
+```
+
+Intel macOS currently has no PyTorch wheel for Python 3.13; use Python 3.12.
+The latest Intel macOS PyTorch wheel is 2.2.2, so pin NumPy below 2 for
+compatibility. The model includes an RMSNorm fallback for that PyTorch version.
+
+Build the frontend, download the Maia 79M checkpoint (about 300 MB; first run
+requires an internet connection), and start the app:
+
+```sh
+npm --prefix frontend ci
+npm --prefix frontend run build
+.venv/bin/python -m maia3.cache --model maia3-79m
+.venv/bin/python chessground_app.py
+```
+
+The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
+only.
+
+### Windows
+
+Build the frontend once from the repository root:
 
 ```powershell
-cd .\frontend
-npm ci
-npm run build
-cd ..
+npm --prefix frontend ci
+npm --prefix frontend run build
 ```
 
 Install the Python project if needed, pre-cache the model, and start the local
@@ -223,8 +266,8 @@ Open **Profile** to switch between your Blitz and Rapid rating graphs and match
 histories. Completed PGNs are saved with each match-history entry and can be
 copied from its row. The backend validates moves and remains the source of truth
 for game state.
-The app uses the 79M model, which must be downloaded before play. Preset
-The available game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
+The app uses the 79M model, which must be downloaded before play. The available
+game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
 Both clocks are enforced by the server, including Maia's engine and think time.
 
 The Chessground interface uses the Tatiana chess-piece artwork by sadsnake1,

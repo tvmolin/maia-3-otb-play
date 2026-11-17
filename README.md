@@ -108,6 +108,20 @@ Start the game from the repository root:
 .\.venv\Scripts\python.exe .\play_maia.py
 ```
 
+### Run the Chessground browser tests
+
+The Chessground frontend has deterministic Playwright tests that use a fake
+engine and temporary storage. They do not download a model or modify the
+real `games` or ladder files:
+
+```powershell
+cd frontend
+npm ci
+npm run build
+npx playwright install chromium
+npx playwright test
+```
+
 After you enter the Elo ratings and color, the script loads Maia before asking
 for your first move. Startup may take a little while.
 

@@ -4,13 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "vite build"
+    "build": "vite build",
+    "test:e2e": "vite build && playwright test"
   },
   "dependencies": {
     "@lichess-org/chessground": "9.10.3",
     "date-fns": "^4.4.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.49.1",
     "vite": "6.4.5"
   }
 }

@@ -1,0 +1,19 @@
+- Larger board (maybe resizable)
+- Take notes about each game
+- Clocks on each player's bar instead of at the top
+- Generate puzzles from my blunders automatically
+- More piece sets and boards
+
+
+- UI overhaul, maybe use mantine or something
+  - Maybe migrate everything to react to be able to do this
+- Better rating graph
+
+
+
+
+Migration plan:
+Add a few Playwright end-to-end tests against the real Flask app with a fake engine. They should cover a full game flow, promotion, move navigation, undo/resign and a page reload, and be written against visible behavior (roles and labels) rather than DOM ids, so they survive the rewrite.
+Run them against the current UI to confirm they pass.
+Migrate to React and Mantine, keeping those tests green.
+Add Vitest unit tests for pure logic as we go, such as clock formatting, captured pieces and material count.

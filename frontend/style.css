@@ -545,10 +545,26 @@ button:disabled {
 
 #status {
   min-height: 1.5em;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   color: #b2c0b5;
   font-size: 0.9rem;
   line-height: 1.5;
+}
+
+.game-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border: 1px solid #3a493d;
+  border-radius: 10px;
+  background: rgba(45, 58, 48, 0.4);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.game-checkbox-wrapper:hover {
+  border-color: #557d3f;
+  background: rgba(85, 125, 63, 0.08);
 }
 
 .result-summary {
@@ -637,7 +653,47 @@ button:disabled {
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.actions button {
+  min-height: 42px;
+  padding: 10px 16px;
+  flex: 1;
+  min-width: 100px;
+  border-color: #506443;
+  background: linear-gradient(180deg, #2d3a30, #252e28);
+  color: #d8e5d2;
+  font-weight: 700;
+  box-shadow: 0 2px 8px #0003;
+}
+
+.actions button:hover:not(:disabled) {
+  border-color: #7a9a5a;
+  background: linear-gradient(180deg, #38452f, #2e3826);
+  color: #e8f2e1;
+  box-shadow: 0 4px 12px #0005;
+}
+
+.button-icon {
+  display: inline-flex;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
+.resign-button {
+  border-color: #a84856;
+  background: linear-gradient(180deg, #4a2a30, #3a1e24);
+  color: #ffcfd3;
+  box-shadow: 0 2px 8px #ff505050;
+}
+
+.resign-button:hover:not(:disabled) {
+  border-color: #d17b82;
+  background: linear-gradient(180deg, #562f36, #452228);
+  color: #ffe5e8;
+  box-shadow: 0 4px 12px #ff505070;
 }
 
 .move-actions {
@@ -680,6 +736,7 @@ button:disabled {
 
 .move-navigation {
   display: flex;
+  align-items: center;
   gap: 7px;
   padding: 6px;
   border: 1px solid #304038;
@@ -701,6 +758,10 @@ button:disabled {
   font-weight: 750;
 }
 
+.move-navigation button svg {
+  stroke-width: 2.25;
+}
+
 .move-navigation button:hover:not(:disabled) {
   border-color: #71884f;
   background: #2b392c;
@@ -719,6 +780,8 @@ button:disabled {
   margin-left: auto;
   border-color: #405045;
   background: #202a24;
+  color: #d9eeb8;
+  font-weight: 800;
 }
 
 #move-live:disabled {

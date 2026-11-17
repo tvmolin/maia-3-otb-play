@@ -9,8 +9,8 @@ export default defineConfig({
     outDir: '../static/chessground',
     rollupOptions: {
       input: {
-        main: fileURLToPath(new URL('./main.js', import.meta.url)),
-        profile: fileURLToPath(new URL('./profile.js', import.meta.url)),
+        main: fileURLToPath(new URL('./app.jsx', import.meta.url)),
+        profile: fileURLToPath(new URL('./profile.jsx', import.meta.url)),
       },
       output: {
         assetFileNames: 'assets/[name][extname]',

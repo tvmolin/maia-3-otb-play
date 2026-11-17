@@ -9,13 +9,21 @@ export async function resetServer(request, options = {}) {
 }
 
 export async function chooseOption(page, label, value) {
-  const control = page.getByLabel(label);
+  const combobox = page.getByRole('combobox', { name: label });
+  const control = (await combobox.count())
+    ? combobox.first()
+    : page.getByRole('textbox', { name: label }).first();
   if (await control.evaluate((element) => element instanceof HTMLSelectElement)) {
     await control.selectOption(value);
     return;
   }
+  if (await control.inputValue() === value) return;
   await control.click();
-  await page.getByRole('option', { name: value, exact: true }).click();
+  const option = page
+    .locator('[data-combobox-option]:visible')
+    .filter({ hasText: new RegExp(`^${value}$`, 'i') })
+    .first();
+  await option.click();
 }
 
 export async function findMatch(page, { color = 'white', timeControl = '3+2' } = {}) {

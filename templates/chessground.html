@@ -7,126 +7,12 @@
   <meta name="theme-color" content="#14171b">
   <title>Chess ladder</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/main.css') }}">
-  <script type="module" src="{{ url_for('static', filename='chessground/assets/app.js') }}"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/style.css') }}">
 </head>
 
 <body>
-  <main>
-    <header class="page-header">
-      <a class="brand-lockup" href="{{ url_for('index') }}" aria-label="Home">
-        <span class="brand-mark" aria-hidden="true">♞</span>
-        <span>
-          <span class="brand-name">PERSONAL CHESS LADDER</span>
-          <span class="brand-tagline">Your next great game starts here</span>
-        </span>
-      </a>
-      <a class="header-link" href="{{ url_for('profile') }}">
-        <span aria-hidden="true">◷</span> Profile
-      </a>
-    </header>
-    <div class="game-layout">
-      <section class="board-column" aria-label="Chess board">
-        <div id="opponent-display" class="board-player" hidden>
-          <span class="player-avatar opponent-avatar" aria-hidden="true">M</span>
-          <span id="opponent-name" class="board-player-name">Maia</span>
-          <span id="opponent-rating" class="board-player-rating"></span>
-          <span id="opponent-captured-pieces" class="captured-pieces" aria-label="No pieces captured"></span>
-          <span id="opponent-material-advantage" class="material-advantage" hidden></span>
-          <span class="player-side-label">OPPONENT</span>
-        </div>
-        <div id="board" class="cg-wrap"></div>
-        <div id="player-display" class="board-player" hidden>
-          <span class="player-avatar player-avatar-you" aria-hidden="true">Y</span>
-          <span id="player-name" class="board-player-name">You</span>
-          <span id="player-rating" class="board-player-rating"></span>
-          <span id="player-captured-pieces" class="captured-pieces" aria-label="No pieces captured"></span>
-          <span id="player-material-advantage" class="material-advantage" hidden></span>
-          <span class="player-side-label">YOU</span>
-        </div>
-      </section>
-      <aside class="sidebar">
-        <form id="setup" class="panel">
-          <div class="setup-heading">
-            <span class="eyebrow">READY WHEN YOU ARE</span>
-            <h2>Find your next game</h2>
-            <p>Pick a time control and take your place at the board.</p>
-          </div>
-          <label for="time-control">Time control</label>
-          <select id="time-control" name="time_control">
-            <optgroup label="Blitz">
-              <option value="3+2" selected>3+2</option>
-              <option value="5+5">5+5</option>
-            </optgroup>
-            <optgroup label="Rapid">
-              <option value="15+10">15+10</option>
-              <option value="20+10">20+10</option>
-            </optgroup>
-          </select>
-          <button type="submit">Find match</button>
-          <label for="player-color">Piece color</label>
-          <select id="player-color" name="color">
-            <option value="random" selected>Random</option>
-            <option value="white">White</option>
-            <option value="black">Black</option>
-          </select>
-        </form>
-        <section id="clocks-panel" class="panel clocks" aria-label="Chess clock" hidden>
-          <div id="white-clock" class="clock-display">
-            <span>White</span>
-            <time>--:--</time>
-          </div>
-          <div id="black-clock" class="clock-display">
-            <span>Black</span>
-            <time>--:--</time>
-          </div>
-        </section>
-        <section id="actions-panel" class="panel" hidden>
-          <div id="result-summary" class="result-summary" hidden aria-live="polite">
-            <div id="result-icon" class="result-icon" aria-hidden="true"></div>
-            <div class="result-copy">
-              <span id="result-category" class="result-category"></span>
-              <h2 id="result-title"></h2>
-              <p id="result-detail"></p>
-            </div>
-            <div id="result-rating" class="result-rating"></div>
-          </div>
-          <div id="status" role="status" aria-live="polite">Loading game…</div>
-          <label class="match-setting-checkbox" for="play-instantly">
-            <input id="play-instantly" name="play_instantly" type="checkbox">
-            <span>Play instantly</span>
-          </label>
-          <div class="actions">
-            <button id="new-game" type="button" hidden>End match</button>
-            <button id="undo" type="button" disabled>Undo</button>
-            <button id="resign" type="button" disabled>Resign</button>
-          </div>
-        </section>
-        <section id="moves-panel" class="panel" hidden>
-          <h2>Moves</h2>
-          <nav class="move-navigation" aria-label="Navigate moves">
-            <button id="move-first" type="button" aria-label="Go to starting position" disabled>|&lt;</button>
-            <button id="move-previous" type="button" aria-label="Previous move" disabled>&lt;</button>
-            <button id="move-next" type="button" aria-label="Next move" disabled>&gt;</button>
-            <button id="move-live" type="button" aria-label="Return to current position" disabled>Live</button>
-          </nav>
-          <ol id="move-history" aria-label="Move history"></ol>
-          <div class="move-actions">
-            <button id="copy-pgn" type="button" hidden>Copy PGN</button>
-            <textarea id="pgn-fallback" aria-label="PGN to copy" readonly hidden></textarea>
-          </div>
-        </section>
-      </aside>
-    </div>
-  </main>
-  <dialog id="promotion-dialog" aria-labelledby="promotion-title">
-    <h2 id="promotion-title">Promote pawn</h2>
-    <div class="promotion-options">
-      <button type="button" data-piece="q" aria-label="Promote to queen">♕</button>
-      <button type="button" data-piece="r" aria-label="Promote to rook">♖</button>
-      <button type="button" data-piece="b" aria-label="Promote to bishop">♗</button>
-      <button type="button" data-piece="n" aria-label="Promote to knight">♘</button>
-    </div>
-  </dialog>
+  <div id="root"></div>
+  <script type="module" src="{{ url_for('static', filename='chessground/assets/app.js') }}"></script>
 </body>
 
 </html>

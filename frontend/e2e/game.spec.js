@@ -58,6 +58,42 @@ test.describe('starting a match', () => {
     await movePiece(page, 'e2', 'e4');
     await expect(moveButton(page, '1... e5')).toBeVisible({ timeout: 2000 });
   });
+
+  test('keeps a moved piece visible while the server responds', async ({ page, request }) => {
+    const sounds = [];
+    page.on('request', (requestEvent) => {
+      if (requestEvent.url().includes('/sounds/')) sounds.push(requestEvent.url());
+    });
+    await startScenario(page, request, { think_seconds: 5, engine_moves: ['e5'] });
+    await page.route('**/api/move', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+
+    await movePiece(page, 'e2', 'e4');
+    await expectPieceAt(page, 'e4', 'P');
+    await expectPieceAt(page, 'e2', null);
+    await expect.poll(() => sounds.some((url) => url.endsWith('/Move.mp3'))).toBeTruthy();
+  });
+
+  test('queues and plays a premove while Maia responds', async ({ page, request }) => {
+    await startScenario(page, request, {
+      think_seconds: 1,
+      engine_moves: ['e5', 'Nc6'],
+    });
+    await page.route('**/api/move', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.continue();
+    });
+
+    await movePiece(page, 'e2', 'e4');
+    await movePiece(page, 'g1', 'f3');
+
+    await expectPieceAt(page, 'e4', 'P');
+    await expectPieceAt(page, 'e5', 'p');
+    await expectPieceAt(page, 'f3', 'N');
+    await expect(page.getByRole('button', { name: 'Review move 2. Nf3' })).toBeVisible();
+  });
 });
 
 test.describe('moves and board feedback', () => {

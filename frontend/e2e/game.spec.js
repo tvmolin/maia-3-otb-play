@@ -127,6 +127,10 @@ test.describe('starting a match', () => {
 
 test.describe('moves and board feedback', () => {
   test('offers promotion choices, can cancel, then promotes', async ({ page, request }) => {
+    const sounds = [];
+    page.on('request', (requestEvent) => {
+      if (requestEvent.url().includes('/sounds/')) sounds.push(requestEvent.url());
+    });
     await startScenario(page, request, {
       fen: '7k/P7/8/8/8/8/8/7K w - - 0 1',
       engine_moves: ['Kg7'],
@@ -149,6 +153,9 @@ test.describe('moves and board feedback', () => {
     await expect(moveButton(page, '1... Kg7')).toBeVisible();
     await expectPieceAt(page, 'a8', 'Q');
     await expectPieceAt(page, 'a7', null);
+    await moveButton(page, '1. a8=Q+').click();
+    await expect(page.locator('cg-board square.check')).toHaveCount(1);
+    await expect.poll(() => sounds.some((url) => url.endsWith('/Check.mp3'))).toBeTruthy();
   });
 
   test('tracks captured pieces and material advantage', async ({ page, request }) => {

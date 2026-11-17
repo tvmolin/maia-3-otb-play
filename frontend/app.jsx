@@ -132,10 +132,15 @@ function useChessSounds(state) {
 
     if (state.history?.length > previousState.history?.length) {
       const newMoves = state.history.slice(previousState.history.length);
-      for (const move of newMoves) {
-        if (move.role === 'Engine') playMoveSound(move);
-        else if (move.text?.includes('#')) playSound('checkmate');
-        else if (move.text?.includes('+')) playSound('check');
+      for (const [index, move] of newMoves.entries()) {
+        const position = state.positions?.[previousState.history.length + index + 1];
+        if (position?.check) {
+          if (move.role === 'Engine' || move.text?.includes('#')) {
+            playSound(move.text?.includes('#') ? 'checkmate' : 'check');
+          }
+        } else if (move.role === 'Engine') {
+          playMoveSound(move);
+        }
       }
     }
 
@@ -268,6 +273,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
   const groundRef = useRef(null);
   const moveRef = useRef(onMove);
   const previousPendingMoveRef = useRef(null);
+  const fitBoardRef = useRef(() => {});
   moveRef.current = onMove;
 
   useEffect(() => {
@@ -285,29 +291,57 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
       },
     });
     const fitBoard = () => {
-      const parent = elementRef.current?.parentElement;
-      if (!parent || !elementRef.current) return;
-      const width = parent.getBoundingClientRect().width;
-      const size = (Math.floor((width * window.devicePixelRatio) / 8) * 8) / window.devicePixelRatio;
+      const board = elementRef.current;
+      const column = board?.closest('.board-column');
+      const layout = column?.parentElement;
+      if (!board || !column || !layout) return;
+      const sidebar = layout.querySelector(':scope > .sidebar');
+      const layoutRect = layout.getBoundingClientRect();
+      const sidebarRect = sidebar?.getBoundingClientRect();
+      const layoutGap = Number.parseFloat(getComputedStyle(layout).columnGap) || 0;
+      const sidebarBeside = Boolean(
+        sidebarRect && sidebarRect.width > 0 && sidebarRect.left > layoutRect.left + 160,
+      );
+      const availableWidth = sidebarBeside
+        ? sidebarRect.left - layoutRect.left - layoutGap
+        : layoutRect.width;
+      const bars = [...column.querySelectorAll('.board-player')];
+      const rowGap = Number.parseFloat(getComputedStyle(column).rowGap) || 0;
+      const bottomPadding = Number.parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+      const availableHeight = window.innerHeight
+        - column.getBoundingClientRect().top
+        - bottomPadding
+        - bars.reduce((sum, bar) => sum + bar.getBoundingClientRect().height, 0)
+        - rowGap * bars.length;
+      const available = Math.min(availableWidth, availableHeight);
+      const pixelRatio = window.devicePixelRatio || 1;
+      const size = (Math.floor((available * pixelRatio) / 8) * 8) / pixelRatio;
       if (size > 0) {
-        elementRef.current.style.width = `${size + 0.02}px`;
-        elementRef.current.style.height = `${size + 0.02}px`;
+        column.style.width = `${size}px`;
+        board.style.width = `${size}px`;
+        board.style.height = `${size}px`;
+        groundRef.current?.redrawAll();
       }
-      groundRef.current?.redrawAll();
     };
+    fitBoardRef.current = fitBoard;
     fitBoard();
+    const layoutElement = elementRef.current?.closest('.game-layout');
     const observer = 'ResizeObserver' in window
       ? new ResizeObserver(fitBoard)
       : null;
-    if (observer) observer.observe(elementRef.current.parentElement);
-    else window.addEventListener('resize', fitBoard);
+    if (observer && layoutElement) observer.observe(layoutElement);
+    window.addEventListener('resize', fitBoard);
     return () => {
       observer?.disconnect();
-      if (!observer) window.removeEventListener('resize', fitBoard);
+      window.removeEventListener('resize', fitBoard);
       groundRef.current?.destroy();
       groundRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    fitBoardRef.current();
+  }, [state?.started]);
 
   useEffect(() => {
     if (!groundRef.current || !state) return;
@@ -318,6 +352,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
       turn_color: state.turn_color,
       last_move: state.last_move,
       check: state.check,
+      check_square: state.check_square,
     };
     const reviewing = activePly !== state.ply;
     const canMove = Boolean(state.can_move) && !reviewing;
@@ -325,6 +360,9 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
       previousPendingMoveRef.current = pendingMove;
       groundRef.current.set({
         turnColor: state.player_color === 'white' ? 'black' : 'white',
+        check: pendingMove.givesCheck
+          ? (state.player_color === 'white' ? 'black' : 'white')
+          : false,
         movable: {
           color: state.player_color,
           dests: new Map(),
@@ -340,7 +378,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
       orientation: state.player_color || 'white',
       turnColor: position.turn_color,
       lastMove: position.last_move || undefined,
-      check: position.check,
+      check: position.check ? position.turn_color : false,
       movable: {
         color: canMove ? state.player_color : undefined,
         dests: destinationsToMap(canMove ? state.destinations : {}),
@@ -355,7 +393,11 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
     previousPendingMoveRef.current = pendingMove;
   }, [state, reviewPly, requestPending, pendingMove]);
 
-  return <div ref={elementRef} className="cg-wrap" />;
+  return (
+    <div className="board-slot">
+      <div ref={elementRef} className="cg-wrap" />
+    </div>
+  );
 }
 
 function Clock({ color, clock, milliseconds }) {
@@ -542,11 +584,13 @@ function App() {
     }
   }, [readJson, refreshState, setPending, updateState]);
 
-  const startPendingMove = (current) => {
+  const startPendingMove = (current, moveKey) => {
     const remaining = getRemaining(performance.now());
     remaining[current.player_color] += current.clock.increment_seconds * 1000;
+    const givesCheck = current.checking_moves?.includes(moveKey);
     setPendingMove({
       basePly: current.ply,
+      givesCheck,
       clock: {
         ...current.clock,
         remaining_ms: remaining,
@@ -567,8 +611,9 @@ function App() {
       setPromotionMove({ moveKey, promotions });
       return;
     }
-    playSound(isCaptureMove(current, moveKey) ? 'capture' : 'move');
-    startPendingMove(current);
+    const givesCheck = current.checking_moves?.includes(moveKey);
+    playSound(givesCheck ? 'check' : (isCaptureMove(current, moveKey) ? 'capture' : 'move'));
+    startPendingMove(current, moveKey);
     void sendMove(moveKey);
   }, [refreshState, sendMove, startPendingMove]);
 
@@ -839,8 +884,9 @@ function App() {
                 onClick={() => {
                   const move = `${promotionMove.moveKey}${piece}`;
                   setPromotionMove(null);
-                  playSound(isCaptureMove(state, move) ? 'capture' : 'move');
-                  startPendingMove(state);
+                  const givesCheck = state.checking_moves?.includes(move);
+                  playSound(givesCheck ? 'check' : (isCaptureMove(state, move) ? 'capture' : 'move'));
+                  startPendingMove(state, move);
                   void sendMove(move);
                 }}
               >

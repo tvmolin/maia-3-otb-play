@@ -1,6 +1,3 @@
-- Larger board (maybe resizable)
-- Maybe auto lichess integration where it imports/analyzes the games automatically, I could take my notes directly on the game's analysis
-- 
 - Generate puzzles from my blunders automatically
 - More piece sets and boards (textured boards)
 

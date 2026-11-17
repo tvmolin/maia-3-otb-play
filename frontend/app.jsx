@@ -23,7 +23,7 @@ import {
   IconChevronsLeft,
   IconClock,
   IconCopy,
-  IconPlayerStop,
+  IconFlag,
   IconRefresh,
 } from '@tabler/icons-react';
 import { Chessground } from '@lichess-org/chessground';
@@ -125,7 +125,6 @@ function playMoveSound(move) {
 
 function useChessSounds(state) {
   const previousStateRef = useRef(null);
-
   useEffect(() => {
     const previousState = previousStateRef.current;
     previousStateRef.current = state;
@@ -168,42 +167,43 @@ function isCaptureMove(state, moveKey) {
   return moveKey[0] !== moveKey[2] && enPassant === destination;
 }
 
-function useDisplayedClock(clock, started, onExpired) {
+function useDisplayedClock(clock, started, onExpired, movePending) {
   const [now, setNow] = useState(() => performance.now());
-  const sampleRef = useRef({ remaining: null, sampledAt: performance.now() });
   const expiredSampleRef = useRef(null);
   const clockKey = clock
     ? `${clock.remaining_ms.white}:${clock.remaining_ms.black}:${clock.running_color}:${started}`
     : 'stopped';
-  useEffect(() => {
-    sampleRef.current = {
-      remaining: clock?.remaining_ms || null,
-      sampledAt: performance.now(),
-    };
-  }, [clockKey]);
+  const sample = useMemo(() => ({
+    remaining: clock?.remaining_ms || null,
+    sampledAt: performance.now(),
+  }), [clockKey]);
   useEffect(() => {
     if (!started || !clock?.running_color) return undefined;
     const timer = window.setInterval(() => setNow(performance.now()), 100);
     return () => window.clearInterval(timer);
   }, [clock, started]);
-  const remaining = !started || !clock
-    ? { white: 0, black: 0 }
-    : { ...(sampleRef.current.remaining || clock.remaining_ms) };
-  if (started && clock?.running_color) {
-    remaining[clock.running_color] = Math.max(
-      0,
-      remaining[clock.running_color] - (now - sampleRef.current.sampledAt),
-    );
-  }
+  const getRemaining = (at) => {
+    const remaining = !started || !clock
+      ? { white: 0, black: 0 }
+      : { ...sample.remaining };
+    if (started && clock?.running_color) {
+      remaining[clock.running_color] = Math.max(
+        0,
+        remaining[clock.running_color] - Math.max(0, at - sample.sampledAt),
+      );
+    }
+    return remaining;
+  };
+  const remaining = getRemaining(now);
   useEffect(() => {
     const runningColor = clock?.running_color;
-    if (!started || !runningColor || remaining[runningColor] > 0) return;
+    if (!started || movePending || !runningColor || remaining[runningColor] > 0) return;
     const expirationKey = `${clockKey}:${runningColor}`;
     if (expiredSampleRef.current === expirationKey) return;
     expiredSampleRef.current = expirationKey;
     void onExpired();
-  }, [clockKey, clock, now, onExpired, remaining, started]);
-  return remaining;
+  }, [clockKey, clock, now, onExpired, remaining, started, movePending]);
+  return { remaining, getRemaining };
 }
 
 function CapturedPieces({ pieces = [] }) {
@@ -236,8 +236,9 @@ function CapturedPieces({ pieces = [] }) {
   );
 }
 
-function PlayerBar({ state, color, pieces, advantage, label }) {
+function PlayerBar({ state, color, pieces, advantage, label, clock, clockTimes }) {
   const isPlayer = label === 'YOU';
+  const milliseconds = clockTimes?.[color];
   return (
     <div className="board-player">
       <span className={`player-avatar ${isPlayer ? 'player-avatar-you' : 'opponent-avatar'}`} aria-hidden="true">
@@ -255,7 +256,9 @@ function PlayerBar({ state, color, pieces, advantage, label }) {
       ) : (
         <span className="material-advantage" aria-label="No material advantage" hidden />
       )}
-      <span className="player-side-label">{label}</span>
+      <div className="player-clock">
+        <Clock color={color} clock={clock} milliseconds={milliseconds} />
+      </div>
     </div>
   );
 }
@@ -358,8 +361,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
 function Clock({ color, clock, milliseconds }) {
   const active = clock?.running_color === color;
   return (
-    <div className={`clock-display${active ? ' active' : ''}${active && milliseconds < 10_000 ? ' expiring' : ''}`}>
-      <span>{color[0].toUpperCase() + color.slice(1)}</span>
+    <div aria-label={`${color[0].toUpperCase() + color.slice(1)} clock`} className={`clock-display clock-display-${color}${active ? ' active' : ''}${active && milliseconds < 10_000 ? ' expiring' : ''}`}>
       <time dateTime={clock ? `PT${(milliseconds / 1000).toFixed(3)}S` : undefined}>
         {clock ? formatClock(milliseconds) : '--:--'}
       </time>
@@ -491,8 +493,10 @@ function App() {
     updateState(await readJson(await fetch('/api/state')));
   }, [readJson, updateState]);
 
-  const clock = state?.started ? state.clock : null;
-  const clockTimes = useDisplayedClock(clock, Boolean(state?.started), refreshState);
+  const clock = state?.started ? pendingMove?.clock || state.clock : null;
+  const { remaining: clockTimes, getRemaining } = useDisplayedClock(
+    clock, Boolean(state?.started), refreshState, Boolean(pendingMove),
+  );
 
   useEffect(() => {
     refreshState().catch((error) => setStatusOverride(error.message));
@@ -538,6 +542,19 @@ function App() {
     }
   }, [readJson, refreshState, setPending, updateState]);
 
+  const startPendingMove = (current) => {
+    const remaining = getRemaining(performance.now());
+    remaining[current.player_color] += current.clock.increment_seconds * 1000;
+    setPendingMove({
+      basePly: current.ply,
+      clock: {
+        ...current.clock,
+        remaining_ms: remaining,
+        running_color: current.player_color === 'white' ? 'black' : 'white',
+      },
+    });
+  };
+
   const onBoardMove = useCallback((origin, destination) => {
     const current = stateRef.current;
     if (!current || !current.can_move || requestPendingRef.current) {
@@ -551,9 +568,9 @@ function App() {
       return;
     }
     playSound(isCaptureMove(current, moveKey) ? 'capture' : 'move');
-    setPendingMove({ basePly: current.ply });
+    startPendingMove(current);
     void sendMove(moveKey);
-  }, [refreshState, sendMove]);
+  }, [refreshState, sendMove, startPendingMove]);
 
   const sendCommand = useCallback(async (command) => {
     const current = stateRef.current;
@@ -682,22 +699,23 @@ function App() {
       fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
     }}>
       <main>
-        <header className="page-header">
-          <Anchor className="brand-lockup" href="/" aria-label="Home">
-            <span className="brand-mark" aria-hidden="true">♞</span>
-            <span>
-              <span className="brand-name">PERSONAL CHESS LADDER</span>
-              <span className="brand-tagline">Your next great game starts here</span>
-            </span>
-          </Anchor>
-          <Anchor className="header-link" href="/profile">
-            <IconClock size={16} aria-hidden="true" /> Profile
-          </Anchor>
-        </header>
-        <div className="game-layout">
+        <div className="app-container">
+          <aside className="app-sidebar">
+            <Anchor className="brand-lockup" href="/" aria-label="Home">
+              <span className="brand-mark" aria-hidden="true">♞</span>
+              <span>
+                <span className="brand-name">PERSONAL CHESS LADDER</span>
+                <span className="brand-tagline">Your next great game starts here</span>
+              </span>
+            </Anchor>
+            <Anchor className="header-link" href="/profile" title="Profile">
+              <IconClock size={16} aria-hidden="true" /> Profile
+            </Anchor>
+          </aside>
+          <div className="game-layout">
           <section className="board-column" aria-label="Chess board">
             {state?.started && (
-              <PlayerBar state={state} color={opponentColor} pieces={captured[opponentColor]} advantage={opponentAdvantage} label="OPPONENT" />
+              <PlayerBar state={state} color={opponentColor} pieces={captured[opponentColor]} advantage={opponentAdvantage} label="OPPONENT" clock={clock} clockTimes={clockTimes} />
             )}
             <ChessBoard
               state={state}
@@ -707,7 +725,7 @@ function App() {
               onMove={onBoardMove}
             />
             {state?.started && (
-              <PlayerBar state={state} color={playerColorValue} pieces={captured[playerColorValue]} advantage={playerAdvantage} label="YOU" />
+              <PlayerBar state={state} color={playerColorValue} pieces={captured[playerColorValue]} advantage={playerAdvantage} label="YOU" clock={clock} clockTimes={clockTimes} />
             )}
           </section>
           <aside className="sidebar">
@@ -745,10 +763,6 @@ function App() {
             )}
             {state?.started && (
               <>
-                <Paper className="panel clocks" aria-label="Chess clock">
-                  <Clock color="white" clock={state.clock} milliseconds={clockTimes.white} />
-                  <Clock color="black" clock={state.clock} milliseconds={clockTimes.black} />
-                </Paper>
                 <Paper className="panel">
                   {state.game_over && (
                     <div className="result-summary" data-outcome={outcome || 'draw'} aria-live="polite">
@@ -774,14 +788,14 @@ function App() {
                     </div>
                   )}
                   <Group className="actions">
-                    <Button onClick={newGame} disabled={requestPending || state.maia_thinking} leftSection={<IconRefresh size={16} />}>
+                    <Button onClick={newGame} disabled={requestPending || state.maia_thinking}>
                       {state.game_over ? 'Play again' : 'End match'}
                     </Button>
-                    <Button variant="light" onClick={() => sendCommand('undo')} disabled={state.game_over || requestPending || state.maia_thinking || reviewing}>
+                    <Button variant="light" onClick={() => sendCommand('undo')} disabled={state.game_over || requestPending || state.maia_thinking || reviewing} leftSection={<IconRefresh size={16} />}>
                       Undo
                     </Button>
                     <Button className="resign-button" color="red" variant="light" onClick={() => window.confirm('Resign this game?') && sendCommand('resign')} disabled={state.game_over || requestPending || state.maia_thinking}>
-                      <span className="button-icon" aria-hidden="true"><IconPlayerStop size={16} /></span>
+                      <span className="button-icon" aria-hidden="true"><IconFlag size={16} /></span>
                       Resign
                     </Button>
                   </Group>
@@ -826,7 +840,7 @@ function App() {
                   const move = `${promotionMove.moveKey}${piece}`;
                   setPromotionMove(null);
                   playSound(isCaptureMove(state, move) ? 'capture' : 'move');
-                  setPendingMove({ basePly: state.ply });
+                  startPendingMove(state);
                   void sendMove(move);
                 }}
               >
@@ -835,6 +849,7 @@ function App() {
             ))}
           </Group>
         </Modal>
+        </div>
       </main>
     </MantineProvider>
   );

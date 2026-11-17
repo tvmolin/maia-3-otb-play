@@ -20,9 +20,8 @@ test.describe('starting a match', () => {
 
     await findMatch(page, { color: 'white' });
     await expect(status(page)).toContainText('Your move.');
-    await expect(page.getByLabel('Chess clock').locator('time')).toHaveCount(2);
-    await expect(page.getByText('OPPONENT')).toBeVisible();
-    await expect(page.getByText('YOU', { exact: true })).toBeVisible();
+    await expect(page.getByLabel('White clock')).toBeVisible();
+    await expect(page.getByLabel('Black clock')).toBeVisible();
     await expectPieceAt(page, 'e2', 'P');
 
     await movePiece(page, 'e2', 'e4');
@@ -75,6 +74,36 @@ test.describe('starting a match', () => {
     await expectPieceAt(page, 'e2', null);
     await expect.poll(() => sounds.some((url) => url.endsWith('/Move.mp3'))).toBeTruthy();
   });
+
+  for (const color of ['white', 'black']) {
+    test(`switches clocks while Maia thinks when playing ${color}`, async ({ page, request }) => {
+      await startScenario(
+        page,
+        request,
+        { think_seconds: 4, engine_moves: color === 'white' ? ['e5'] : ['e4', 'Nf3'] },
+        { color },
+      );
+      const opponent = color === 'white' ? 'black' : 'white';
+      const playerClock = page.getByLabel(`${color === 'white' ? 'White' : 'Black'} clock`);
+      const opponentClock = page.getByLabel(`${opponent === 'white' ? 'White' : 'Black'} clock`);
+      const seconds = async (clock) => {
+        const duration = await clock.locator('time').getAttribute('datetime');
+        return Number(duration.slice(2, -1));
+      };
+
+      const beforeMove = await seconds(playerClock);
+      await movePiece(page, color === 'white' ? 'e2' : 'e7', color === 'white' ? 'e4' : 'e5');
+      await expect(opponentClock).toHaveClass(/active/);
+      await expect(playerClock).not.toHaveClass(/active/);
+      const playerStart = await seconds(playerClock);
+      expect(playerStart - beforeMove).toBeGreaterThan(1.3);
+      const opponentStart = await seconds(opponentClock);
+      await expect.poll(async () => opponentStart - await seconds(opponentClock)).toBeGreaterThan(1);
+      expect(Math.abs(await seconds(playerClock) - playerStart)).toBeLessThan(0.15);
+      await expect(playerClock).toHaveClass(/active/, { timeout: 7000 });
+      await expect(opponentClock).not.toHaveClass(/active/);
+    });
+  }
 
   test('queues and plays a premove while Maia responds', async ({ page, request }) => {
     await startScenario(page, request, {
@@ -151,13 +180,20 @@ test.describe('moves and board feedback', () => {
 
   test('resyncs the board when the engine fails to respond', async ({ page, request }) => {
     await startScenario(page, request, { engine_fails: true });
+    await page.route('**/api/move', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.continue();
+    });
 
     await movePiece(page, 'e2', 'e4');
+    await expect(page.getByLabel('Black clock')).toHaveClass(/active/);
 
     await expectPieceAt(page, 'e2', 'P');
     await expectPieceAt(page, 'e4', null);
     await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(0);
     await expect(status(page)).toContainText('Your move.');
+    await expect(page.getByLabel('White clock')).toHaveClass(/active/);
+    await expect(page.getByLabel('Black clock')).not.toHaveClass(/active/);
   });
 });
 
@@ -239,6 +275,15 @@ test.describe('ending a game', () => {
 
     await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText('Your clock ran out.')).toBeVisible();
+  });
+
+  test('Maia running out of time while thinking ends the game', async ({ page, request }) => {
+    await startScenario(page, request, { clock: [2, 0], think_seconds: 4, engine_moves: ['e5'] });
+    await movePiece(page, 'e2', 'e4');
+    await expect(page.getByLabel('Black clock')).toHaveClass(/active/);
+    await expect(page.getByRole('heading', { name: 'Victory!' })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Your opponent ran out of time.')).toBeVisible();
+    await expect(page.getByLabel('Black clock')).not.toHaveClass(/active/);
   });
 });
 

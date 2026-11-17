@@ -32,25 +32,31 @@ main {
   margin: 0 auto;
 }
 
-h1 {
-  margin: 0 0 20px;
+.app-container {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: clamp(18px, 2.5vw, 32px);
+  align-items: start;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  position: sticky;
+  top: 26px;
+  padding-top: 10px;
 }
 
 .page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 28px;
-}
-
-.page-header h1 {
-  margin: 0;
+  display: none;
 }
 
 .brand-lockup {
   display: flex;
   align-items: center;
-  gap: 12px;
   color: inherit;
   text-decoration: none;
 }
@@ -69,12 +75,11 @@ h1 {
 }
 
 .brand-lockup > span:last-child {
-  display: grid;
-  gap: 2px;
+  display: none;
 }
 
 .brand-name {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 850;
   letter-spacing: 0.13em;
 }
@@ -87,13 +92,16 @@ h1 {
 .header-link {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 9px 13px;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
   border: 1px solid var(--surface-border);
-  border-radius: 999px;
+  border-radius: 12px;
   background: #1b241eaa;
   color: #dce8d9;
   font-weight: 600;
+  font-size: 0;
   text-decoration: none;
   transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
 }
@@ -110,10 +118,11 @@ h1 {
   align-items: start;
   justify-content: center;
   gap: clamp(24px, 4vw, 52px);
+  width: 100%;
 }
 
 .board-column {
-  width: min(100%, 72vh, 740px);
+  width: min(100%, 740px, max(240px, calc(100dvh - 172px)));
   justify-self: center;
   min-width: 0;
   display: grid;
@@ -205,6 +214,10 @@ h1 {
   letter-spacing: 0.12em;
 }
 
+.player-clock {
+  margin-left: auto;
+}
+
 .board-player-rating.rating-winner {
   color: #b6e36a;
 }
@@ -280,32 +293,53 @@ cg-board {
 }
 
 .clock-display {
-  display: grid;
-  gap: 4px;
-  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 6px 10px;
   border: 1px solid #344239;
-  border-radius: 11px;
+  border-radius: 8px;
   background: #151c18;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 0.75rem;
+  min-width: 70px;
 }
 
 .clock-display time {
   color: #e7eee6;
-  font-size: clamp(1.7rem, 3vw, 2.2rem);
+  font-size: 1.1rem;
   font-variant-numeric: tabular-nums;
   font-weight: 750;
   letter-spacing: 0.03em;
 }
 
-.clock-display.active {
+.clock-display-white {
+  color: #f2f1e7;
+}
+
+.clock-display-white time {
+  color: #f2f1e7;
+}
+
+.clock-display-white.active {
+  border-color: #c5bea3;
+  background: linear-gradient(145deg, #3a3528, #2f2820);
+  box-shadow: inset 0 0 0 1px #f2f1e716, 0 0 24px #d4c5a020;
+}
+
+.clock-display-white.active time {
+  color: #f2f1e7;
+}
+
+.clock-display-black.active {
   border-color: #829d57;
   background: linear-gradient(145deg, #2a3828, #202b23);
   box-shadow: inset 0 0 0 1px #b6e36a16, 0 0 24px #a5cd5320;
   color: #e7eee6;
 }
 
-.clock-display.active time {
+.clock-display-black.active time {
   color: var(--accent-strong);
 }
 
@@ -660,13 +694,17 @@ button:disabled {
 .actions button {
   min-height: 42px;
   padding: 10px 16px;
-  flex: 1;
-  min-width: 100px;
+  flex: 1 1 auto;
+  min-width: 80px;
+  max-width: 100%;
   border-color: #506443;
   background: linear-gradient(180deg, #2d3a30, #252e28);
   color: #d8e5d2;
   font-weight: 700;
   box-shadow: 0 2px 8px #0003;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .actions button:hover:not(:disabled) {
@@ -877,13 +915,44 @@ button:disabled {
     padding: 16px;
   }
 
-  .page-header {
-    margin-bottom: 20px;
+  .app-container {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .app-sidebar {
+    position: static;
+    top: auto;
+    flex-direction: row;
+    min-width: auto;
+    padding-top: 0;
+  }
+
+  .brand-lockup {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .brand-lockup > span:last-child {
+    display: grid;
+    gap: 2px;
+  }
+
+  .header-link {
+    width: auto;
+    height: auto;
+    padding: 9px 13px;
+    border-radius: 999px;
+    font-size: inherit;
   }
 
   .game-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 24px;
+  }
+
+  .board-column {
+    width: min(100%, 740px, max(240px, calc(100dvh - 250px)));
   }
 
   .sidebar {

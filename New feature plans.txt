@@ -1,6 +1,6 @@
 - Larger board (maybe resizable)
 - Maybe auto lichess integration where it imports/analyzes the games automatically, I could take my notes directly on the game's analysis
-- Clocks on each player's bar instead of at the top
+- 
 - Generate puzzles from my blunders automatically
 - More piece sets and boards (textured boards)
 
@@ -8,7 +8,3 @@
 - UI overhaul, maybe use mantine or something
 - Better rating graph
 
-
-
-
-Migration bugs:

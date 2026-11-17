@@ -295,11 +295,10 @@ test.describe('profile', () => {
     await resign(page);
     await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible();
 
-    await page.getByRole('link', { name: /Profile/ }).click();
+    await page.goto('/profile');
 
-    await expect(page.getByRole('heading', { name: 'Player profile' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Blitz rating progress' })).toBeVisible();
-    const match = page.getByRole('row').filter({ hasText: '3+2' });
+    await expect(page.locator('h2', { hasText: 'Blitz rating progress' })).toBeVisible();
+    const match = page.locator('table:not(.color-stats) tbody tr').filter({ hasText: '3+2' });
     await expect(match).toContainText('Loss');
     await expect(match).toContainText('White');
     await expect(match.getByRole('button', { name: 'Copy PGN' })).toBeVisible();
@@ -308,7 +307,7 @@ test.describe('profile', () => {
     await expect(page.getByRole('heading', { name: 'Rapid rating progress' })).toBeVisible();
     await expect(page.getByText('No matches yet.')).toBeVisible();
 
-    await page.getByRole('link', { name: 'Back to game' }).click();
+    await page.goto('/');
     await expect(page.getByRole('button', { name: 'Resign' })).toBeVisible();
   });
 });

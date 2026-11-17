@@ -174,3 +174,4 @@ data/evals/*
 .venv
 
 /games
+/frontend/test-results

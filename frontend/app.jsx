@@ -165,8 +165,8 @@ const soundSources = {
 function playSound(name) {
   const audio = new Audio(soundSources[name]);
   audio.volume = 0.8;
-  audio.play().catch(() => {
-    // Browsers can reject playback until the user interacts with the page.
+  audio.play().catch((error) => {
+    console.warn(`Could not play ${name} sound.`, error);
   });
 }
 

@@ -330,6 +330,41 @@ test.describe('starting a match', () => {
     await expectPieceAt(page, 'f3', 'N');
     await expect(page.getByRole('button', { name: 'Review move 2. Nf3' })).toBeVisible();
   });
+
+  test('queues a premove after the player move has been acknowledged', async ({ page, request }) => {
+    await startScenario(page, request, {
+      block_engine: true,
+      engine_moves: ['e5', 'Nc6'],
+    });
+    try {
+      await movePiece(page, 'e2', 'e4');
+      await expect(moveButton(page, '1. e4')).toBeVisible();
+      await movePiece(page, 'g1', 'f3');
+    } finally {
+      await request.post('/__e2e__/release-engine');
+    }
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await expect(moveButton(page, '2. Nf3')).toBeVisible();
+    await expectPieceAt(page, 'f3', 'N');
+  });
+
+  test('shows an accepted Black move before Maia responds', async ({ page, request }) => {
+    await startScenario(page, request, {
+      block_engine: true,
+      block_engine_after: 1,
+      engine_moves: ['e4', 'Nf3'],
+    }, { color: 'black' });
+    try {
+      await movePiece(page, 'e7', 'e5');
+      await expect(moveButton(page, '1... e5')).toBeVisible();
+      await expectPieceAt(page, 'e5', 'p');
+      await expect(page.getByLabel('White clock')).toHaveClass(/active/);
+      await expect(moveButton(page, '2. Nf3')).toHaveCount(0);
+    } finally {
+      await request.post('/__e2e__/release-engine');
+    }
+    await expect(moveButton(page, '2. Nf3')).toBeVisible();
+  });
 });
 
 test.describe('moves and board feedback', () => {
@@ -379,6 +414,65 @@ test.describe('moves and board feedback', () => {
     await expect(page.getByLabel('1 point material advantage')).toBeVisible();
   });
 
+  test('shows the accepted move and capture while engine inference is blocked, including after reload', async ({ page, request }) => {
+    const sounds = [];
+    page.on('request', (event) => {
+      if (event.url().includes('/sounds/')) sounds.push(event.url());
+    });
+    await startScenario(page, request, {
+      fen: '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1',
+      engine_moves: ['Kf7'],
+      block_engine: true,
+    });
+
+    try {
+      await movePiece(page, 'e5', 'd6');
+      await expect(moveButton(page, '1. exd6')).toBeVisible({ timeout: 3000 });
+      await expectPieceAt(page, 'd6', 'P');
+      await expectPieceAt(page, 'd5', null);
+      await expect(page.getByLabel('Captured: 1 pawn')).toHaveCount(1);
+      await expect(page.getByLabel('1 point material advantage')).toBeVisible();
+      await expect.poll(() => sounds.some((url) => url.endsWith('/Capture.mp3'))).toBeTruthy();
+      await expect(page.getByLabel('Black clock')).toHaveClass(/active/);
+      await expect(status(page)).toContainText('thinking');
+      await expect(moveButton(page, '1... Kf7')).toHaveCount(0);
+
+      await page.getByRole('button', { name: 'Go to starting position' }).click();
+      await expectPieceAt(page, 'd5', 'p');
+      await page.getByRole('button', { name: 'Return to current position' }).click();
+      await expectPieceAt(page, 'd6', 'P');
+
+      await page.reload();
+      await expect(moveButton(page, '1. exd6')).toBeVisible();
+      await expect(page.getByLabel('Captured: 1 pawn')).toHaveCount(1);
+      await expect(status(page)).toContainText('thinking');
+    } finally {
+      await request.post('/__e2e__/release-engine');
+    }
+
+    await expect(moveButton(page, '1... Kf7')).toBeVisible();
+    await expect(status(page)).toContainText('Your move.');
+  });
+
+  test('shows the chosen promotion before Maia responds', async ({ page, request }) => {
+    await startScenario(page, request, {
+      fen: '7k/P7/8/8/8/8/8/7K w - - 0 1',
+      engine_moves: ['Kg7'],
+      block_engine: true,
+    });
+    try {
+      await movePiece(page, 'a7', 'a8');
+      await page.getByRole('button', { name: 'Promote to queen' }).click();
+      await expect(moveButton(page, '1. a8=Q+')).toBeVisible();
+      await expectPieceAt(page, 'a8', 'Q');
+      await expect(page.locator('cg-board square.check')).toHaveCount(1);
+      await expect(moveButton(page, '1... Kg7')).toHaveCount(0);
+    } finally {
+      await request.post('/__e2e__/release-engine');
+    }
+    await expect(moveButton(page, '1... Kg7')).toBeVisible();
+  });
+
   test('shows en passant captures correctly when reviewing positions', async ({ page, request }) => {
     await startScenario(page, request, {
       fen: '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1',
@@ -415,22 +509,20 @@ test.describe('moves and board feedback', () => {
     await expect(status(page)).toContainText('Your move.');
   });
 
-  test('resyncs the board when the engine fails to respond', async ({ page, request }) => {
-    await startScenario(page, request, { engine_fails: true });
-    await page.route('**/api/move', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      await route.continue();
-    });
+  test('preserves the accepted move and retries after engine failure', async ({ page, request }) => {
+    await startScenario(page, request, { engine_fails_once: true, engine_moves: ['e5'] });
 
     await movePiece(page, 'e2', 'e4');
-    await expect(page.getByLabel('Black clock')).toHaveClass(/active/);
-
-    await expectPieceAt(page, 'e2', 'P');
-    await expectPieceAt(page, 'e4', null);
-    await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(0);
-    await expect(status(page)).toContainText('Your move.');
-    await expect(page.getByLabel('White clock')).toHaveClass(/active/);
+    await expect(status(page)).toContainText('Maia could not respond');
+    await expectPieceAt(page, 'e2', null);
+    await expectPieceAt(page, 'e4', 'P');
+    await expect(moveButton(page, '1. e4')).toBeVisible();
+    await expect(page.getByLabel('White clock')).not.toHaveClass(/active/);
     await expect(page.getByLabel('Black clock')).not.toHaveClass(/active/);
+    await page.getByRole('button', { name: 'Retry Maia' }).click();
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await expect(status(page)).toContainText('Your move.');
+    await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(2);
   });
 
   test('restores a rejected move and allows a retry', async ({ page, request }) => {
@@ -446,10 +538,28 @@ test.describe('moves and board feedback', () => {
     await expectPieceAt(page, 'e4', null);
     await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(0);
     await expect(page.getByLabel('White clock')).toHaveClass(/active/);
-    await expect(status(page)).toContainText('Your move.');
+    await expect(status(page)).toContainText('The position changed.');
 
     await movePiece(page, 'e2', 'e4');
     await expect(moveButton(page, '1. e4')).toBeVisible();
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(2);
+  });
+
+  test('recovers the accepted move when its acknowledgement is lost', async ({ page, request }) => {
+    await startScenario(page, request, { block_engine: true, engine_moves: ['e5'] });
+    await page.route('**/api/move', async (route) => {
+      await route.fetch();
+      await route.abort('failed');
+    }, { times: 1 });
+    try {
+      await movePiece(page, 'e2', 'e4');
+      await expect(moveButton(page, '1. e4')).toBeVisible();
+      await expectPieceAt(page, 'e4', 'P');
+      await expect(moveButton(page, '1... e5')).toHaveCount(0);
+    } finally {
+      await request.post('/__e2e__/release-engine');
+    }
     await expect(moveButton(page, '1... e5')).toBeVisible();
     await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(2);
   });

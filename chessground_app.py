@@ -278,12 +278,15 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 )
             return {
                 "fen": board.board_fen(),
+                "full_fen": board.fen(),
                 "turn_color": "white" if board.turn == chess.WHITE else "black",
                 "player_color": game.player_color_name if game.started else None,
                 "player_name": game.player_name,
                 "started": game.started,
                 "can_move": can_move,
                 "maia_thinking": game.is_thinking,
+                "maia_error": app.config.get("CHESSGROUND_MAIA_ERROR"),
+                "match_id": app.config.get("CHESSGROUND_MATCH_ID"),
                 "game_over": game.is_game_over,
                 "quit": game.quit_requested,
                 "result": game.result if game.is_game_over else None,
@@ -338,8 +341,8 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
         response.update(extra)
         return jsonify(response), status
 
-    def play_maia_turn():
-        turn = game.choose_maia_move()
+    def play_maia_turn(*, already_thinking=False):
+        turn = game.choose_maia_move(already_thinking=already_thinking)
         think_seconds = (
             0.0
             if app.config.get("CHESSGROUND_PLAY_INSTANTLY")
@@ -351,15 +354,51 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
         ):
             think_seconds *= BLITZ_THINK_TIME_FACTOR
         game.wait_for_maia_think(think_seconds)
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            now = time.monotonic()
+            sync_clock(now)
+            if game.is_game_over:
+                game.finish_maia_think()
+                return None
+            san = game.play_maia_move(turn)
+            next_color = None if game.is_game_over else game.player_color
+            game.move_times.append(clock.complete_move(not game.player_color, next_color, now))
+            return san
+
+    def record_maia_failure():
+        game.finish_maia_think()
         now = time.monotonic()
-        loser = sync_clock(now)
-        if loser is not None:
-            game.finish_maia_think()
-            return None
-        san = game.play_maia_move(turn)
-        next_color = None if game.is_game_over else game.player_color
-        game.move_times.append(clock.complete_move(not game.player_color, next_color, now))
-        return san
+        sync_clock(now)
+        if not game.is_game_over:
+            clock.running_color = None
+            clock.started_at = None
+            app.config["CHESSGROUND_MAIA_PAUSED_AT"] = now
+            app.config["CHESSGROUND_MAIA_ERROR"] = (
+                "Maia could not respond. Retry her move or undo yours."
+            )
+
+    def start_maia_worker():
+        game.begin_maia_turn()
+
+        def run():
+            try:
+                play_maia_turn(already_thinking=True)
+            except Exception:
+                app.logger.exception("Maia failed to respond to a Chessground move.")
+                with app.config["CHESSGROUND_REQUEST_LOCK"]:
+                    record_maia_failure()
+                return
+            try:
+                with app.config["CHESSGROUND_REQUEST_LOCK"]:
+                    save_finished_game()
+            except Exception:
+                app.logger.exception("Could not save the completed Chessground game.")
+
+        try:
+            threading.Thread(target=run, daemon=True).start()
+        except RuntimeError:
+            app.logger.exception("Could not start the Maia worker.")
+            record_maia_failure()
 
     @app.get("/")
     def index():
@@ -623,6 +662,8 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 app.config["CHESSGROUND_MATCH_ID"] = str(uuid.uuid4())
                 app.config.pop("CHESSGROUND_RATING_RECORD", None)
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
+                app.config.pop("CHESSGROUND_MAIA_ERROR", None)
+                app.config.pop("CHESSGROUND_MAIA_PAUSED_AT", None)
                 clock_history.clear()
                 clock.start(
                     base_seconds,
@@ -667,6 +708,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
         payload = request.get_json(silent=True)
         move_text = payload.get("move") if isinstance(payload, dict) else None
         expected_ply = payload.get("expected_ply") if isinstance(payload, dict) else None
+        match_id = payload.get("match_id") if isinstance(payload, dict) else None
         if not isinstance(move_text, str) or not move_text:
             return state_response(400, "Send a UCI move.")
         if isinstance(expected_ply, bool) or not isinstance(expected_ply, int):
@@ -678,6 +720,8 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 return state_response(409, "Your clock ran out.")
             if expected_ply != len(game.board.move_stack):
                 return state_response(409, "The position changed. The board was refreshed.")
+            if match_id is not None and match_id != app.config.get("CHESSGROUND_MATCH_ID"):
+                return state_response(409, "The match changed. The board was refreshed.")
             if not game.started:
                 return state_response(409, "Start a game before moving.")
             if game.is_thinking:
@@ -697,17 +741,24 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 now,
             ))
             clock_history.append(clock_checkpoint)
-            try:
-                if not game.is_game_over:
-                    play_maia_turn()
-                save_finished_game()
-            except Exception:
-                game.undo_plies(1)
-                clock_history.pop()
-                clock.restore_turn(clock_checkpoint, game.player_color, time.monotonic())
-                app.logger.exception("Maia failed to respond to a Chessground move.")
-                return state_response(503, "The engine failed to respond.")
-        return state_response()
+            if not game.is_game_over:
+                start_maia_worker()
+            save_finished_game()
+            return state_response()
+
+    @app.post("/api/retry-maia")
+    def retry_maia():
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            if not app.config.get("CHESSGROUND_MAIA_ERROR") or game.is_game_over:
+                return state_response(409, "There is no failed Maia move to retry.")
+            now = time.monotonic()
+            paused_at = app.config.pop("CHESSGROUND_MAIA_PAUSED_AT")
+            clock.turn_started_at += now - paused_at
+            clock.running_color = not game.player_color
+            clock.started_at = now
+            app.config.pop("CHESSGROUND_MAIA_ERROR", None)
+            start_maia_worker()
+            return state_response()
 
     @app.post("/api/command")
     def command():
@@ -728,6 +779,8 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 return state_response(409, str(error))
             try:
                 if result["action"] == "undo" and not game.is_game_over:
+                    app.config.pop("CHESSGROUND_MAIA_ERROR", None)
+                    app.config.pop("CHESSGROUND_MAIA_PAUSED_AT", None)
                     if clock_history:
                         clock.restore_turn(
                             clock_history.pop(), game.player_color, time.monotonic()
@@ -763,6 +816,8 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 app.config.pop("CHESSGROUND_MATCH_ID", None)
                 app.config.pop("CHESSGROUND_RATING_RECORD", None)
                 app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
+                app.config.pop("CHESSGROUND_MAIA_ERROR", None)
+                app.config.pop("CHESSGROUND_MAIA_PAUSED_AT", None)
             except ValueError as error:
                 return state_response(409, str(error))
             except Exception:

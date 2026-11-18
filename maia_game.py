@@ -370,7 +370,7 @@ class GameSession:
             self.history.append({"role": "You", "text": san})
             return san
 
-    def choose_maia_move(self):
+    def choose_maia_move(self, *, already_thinking=False):
         with self.lock:
             if not self.started:
                 raise ValueError("Choose a color and start the game first.")
@@ -379,44 +379,49 @@ class GameSession:
             if self.board.turn == self.player_color:
                 raise ValueError("It is your turn.")
 
-            self.begin_maia_turn()
+            if not already_thinking:
+                self.begin_maia_turn()
+            elif not self.is_thinking:
+                raise ValueError("Maia is not thinking.")
+            board = self.board.copy()
+        try:
             move_started = time.perf_counter()
-            try:
-                result = self.engine.play(
-                    self.board,
-                    chess.engine.Limit(nodes=1),
-                    info=chess.engine.INFO_ALL,
-                )
-                inference_seconds = time.perf_counter() - move_started
+            result = self.engine.play(
+                board,
+                chess.engine.Limit(nodes=1),
+                info=chess.engine.INFO_ALL,
+            )
+            inference_seconds = time.perf_counter() - move_started
 
-                info = result.info.get("string", "").split()
-                if len(info) != 2 or info[0] != "policy_entropy":
-                    raise RuntimeError("Maia did not report move-policy uncertainty.")
-                uncertainty = float(info[1])
-                if not math.isfinite(uncertainty):
-                    raise RuntimeError(f"Invalid Maia policy uncertainty: {uncertainty}")
-                uncertainty = min(1.0, max(0.0, uncertainty))
+            info = result.info.get("string", "").split()
+            if len(info) != 2 or info[0] != "policy_entropy":
+                raise RuntimeError("Maia did not report move-policy uncertainty.")
+            uncertainty = float(info[1])
+            if not math.isfinite(uncertainty):
+                raise RuntimeError(f"Invalid Maia policy uncertainty: {uncertainty}")
+            uncertainty = min(1.0, max(0.0, uncertainty))
 
-                opening = self.board.fullmove_number <= OPENING_FULL_MOVES
-                min_think = OPENING_MIN_THINK_SECONDS if opening else MIN_THINK_SECONDS
-                max_think = MAX_THINK_SECONDS
-                if opening:
-                    max_think = OPENING_MAX_THINK_SECONDS
-                target_seconds = min_think + uncertainty * (max_think - min_think)
-                think_seconds = max(0.0, target_seconds - inference_seconds)
+            opening = board.fullmove_number <= OPENING_FULL_MOVES
+            min_think = OPENING_MIN_THINK_SECONDS if opening else MIN_THINK_SECONDS
+            max_think = MAX_THINK_SECONDS
+            if opening:
+                max_think = OPENING_MAX_THINK_SECONDS
+            target_seconds = min_think + uncertainty * (max_think - min_think)
+            think_seconds = max(0.0, target_seconds - inference_seconds)
 
-                move = result.move
-                if move is None or not self.board.is_legal(move):
-                    raise RuntimeError("Maia returned an invalid move.")
-                return MaiaTurn(
-                    move=move,
-                    san=self.board.san(move),
-                    uncertainty=uncertainty,
-                    think_seconds=think_seconds,
-                )
-            except Exception:
+            move = result.move
+            if move is None or not board.is_legal(move):
+                raise RuntimeError("Maia returned an invalid move.")
+            return MaiaTurn(
+                move=move,
+                san=board.san(move),
+                uncertainty=uncertainty,
+                think_seconds=think_seconds,
+            )
+        except Exception:
+            if not already_thinking:
                 self.finish_maia_think()
-                raise
+            raise
 
     def wait_for_maia_think(self, seconds):
         self._think_skip.wait(seconds)

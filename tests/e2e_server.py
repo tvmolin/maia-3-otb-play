@@ -29,15 +29,24 @@ DEFAULT_CLOCK = (180, 2)
 class ScriptedEngine:
     """Plays the scripted SAN moves, then the first legal move in UCI order."""
 
-    def __init__(self, moves=(), fail=False):
+    def __init__(self, moves=(), fail=False, fail_once=False, release=None, block_after=0):
         self.moves = list(moves)
         self.fail = fail
+        self.fail_once = fail_once
+        self.release = release
+        self.block_after = block_after
+        self.plays = 0
 
     def configure(self, options):
         pass
 
     def play(self, board, limit, info=None):
-        if self.fail:
+        should_block = self.release and self.plays >= self.block_after
+        self.plays += 1
+        if should_block and not self.release.wait(30):
+            raise RuntimeError("scripted engine was not released")
+        if self.fail or self.fail_once:
+            self.fail_once = False
             raise RuntimeError("scripted engine failure")
         if self.moves:
             move = board.parse_san(self.moves.pop(0))
@@ -52,16 +61,26 @@ class Server:
         self.think_seconds = DEFAULT_THINK_SECONDS
         self.generation = 0
         self.app = None
+        self.engine_release = None
         self.reset({})
 
     def reset(self, options):
+        if self.engine_release:
+            self.engine_release.set()
         self.generation += 1
         self.think_seconds = options.get("think_seconds", DEFAULT_THINK_SECONDS)
         chessground_app.TIME_CONTROLS["blitz"]["3+2"] = (
             tuple(options["clock"]) if "clock" in options else DEFAULT_CLOCK
         )
         board = chess.Board(options["fen"]) if "fen" in options else None
-        engine = ScriptedEngine(options.get("engine_moves", ()), options.get("engine_fails", False))
+        self.engine_release = threading.Event() if options.get("block_engine") else None
+        engine = ScriptedEngine(
+            options.get("engine_moves", ()),
+            options.get("engine_fails", False),
+            options.get("engine_fails_once", False),
+            self.engine_release,
+            options.get("block_engine_after", 0),
+        )
         failures = [options.get("lichess_fail", False)]
 
         def import_game(token, pgn):
@@ -97,6 +116,13 @@ class Server:
                 del match["player_color"]
 
     def __call__(self, environ, start_response):
+        if environ["PATH_INFO"] == "/__e2e__/release-engine" and environ["REQUEST_METHOD"] == "POST":
+            if self.engine_release is None:
+                start_response("409 Conflict", [])
+                return [b"No blocked engine"]
+            self.engine_release.set()
+            start_response("204 No Content", [])
+            return [b""]
         if environ["PATH_INFO"] == "/__e2e__/reset" and environ["REQUEST_METHOD"] == "POST":
             length = int(environ.get("CONTENT_LENGTH") or 0)
             body = environ["wsgi.input"].read(length)

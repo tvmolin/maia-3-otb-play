@@ -1,5 +1,6 @@
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,6 +52,15 @@ class ChessgroundAppTests(unittest.TestCase):
     def tearDown(self):
         for random_patch in reversed(self.random_patches):
             random_patch.stop()
+
+    def wait_for_maia(self, client=None):
+        client = client or self.client
+        for _ in range(500):
+            state = client.get("/api/state").json
+            if not state["maia_thinking"]:
+                return state
+            threading.Event().wait(0.01)
+        self.fail("Maia did not finish thinking")
 
     def test_initial_state_includes_position_and_no_legal_player_moves(self):
         response = self.client.get("/api/state")
@@ -448,13 +458,14 @@ class ChessgroundAppTests(unittest.TestCase):
                 "/api/move",
                 json={"move": "e2e4", "expected_ply": 0},
             )
+            state = self.wait_for_maia()
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
-            response.json["state"]["clock"]["remaining_ms"],
+            state["clock"]["remaining_ms"],
             {"white": 303_000, "black": 305_000},
         )
-        self.assertEqual(response.json["state"]["clock"]["running_color"], "white")
+        self.assertEqual(state["clock"]["running_color"], "white")
 
     def test_completed_pgn_includes_elapsed_time_for_each_move(self):
         now = [100.0]
@@ -476,6 +487,7 @@ class ChessgroundAppTests(unittest.TestCase):
                 "/api/move",
                 json={"move": "e2e4", "expected_ply": 0},
             )
+            self.wait_for_maia()
             now[0] = 104
             response = self.client.post("/api/command", json={"command": "resign"})
 
@@ -551,13 +563,14 @@ class ChessgroundAppTests(unittest.TestCase):
                 "/api/move",
                 json={"move": "e2e4", "expected_ply": 0},
             )
+            state = self.wait_for_maia()
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["state"]["ply"], 1)
-        self.assertTrue(response.json["state"]["game_over"])
-        self.assertEqual(response.json["state"]["result"], "1-0")
-        self.assertEqual(response.json["state"]["termination"], "timeout")
-        self.assertEqual(response.json["state"]["clock"]["running_color"], None)
+        self.assertEqual(state["ply"], 1)
+        self.assertTrue(state["game_over"])
+        self.assertEqual(state["result"], "1-0")
+        self.assertEqual(state["termination"], "timeout")
+        self.assertEqual(state["clock"]["running_color"], None)
 
     def test_timeout_is_a_draw_when_the_winner_has_insufficient_material(self):
         game = GameSession(FakeEngine(), board=chess.Board("8/8/8/8/8/8/4k3/6K1 w - - 0 1"))
@@ -620,7 +633,7 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(state["termination"], "fifty_moves")
         self.assertEqual(state["ply"], 1)
 
-    def test_move_returns_authoritative_position_after_maia_responds(self):
+    def test_move_acknowledges_player_then_returns_maias_position(self):
         self.client.post("/api/start", json={"color": "white"})
         response = self.client.post(
             "/api/move",
@@ -629,6 +642,12 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         state = response.json["state"]
+        self.assertEqual(state["ply"], 1)
+        self.assertEqual(state["history"], [{"role": "You", "text": "e4"}])
+        self.assertTrue(state["maia_thinking"])
+        self.assertFalse(state["can_move"])
+        self.assertEqual(state["clock"]["running_color"], "black")
+        state = self.wait_for_maia()
         self.assertEqual(state["ply"], 2)
         self.assertEqual(len(state["positions"]), 3)
         self.assertEqual(state["positions"][0]["turn_color"], "white")
@@ -648,17 +667,104 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertTrue(state["can_move"])
         self.assertEqual(state["last_move"], ["e7", "e5"])
 
+    def test_move_and_state_return_while_engine_inference_is_blocked(self):
+        entered = threading.Event()
+        release = threading.Event()
+        move_done = threading.Event()
+        state_done = threading.Event()
+        results = {}
+
+        class BlockingEngine(FakeEngine):
+            def play(self, board, limit, info=None):
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError("Engine test was not released")
+                return super().play(board, limit, info)
+
+        app = create_app(BlockingEngine(), player_data_path=self.player_data_path)
+        client = app.test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        def submit():
+            with app.test_client() as move_client:
+                results["move"] = move_client.post(
+                    "/api/move", json={"move": "e2e4", "expected_ply": 0}
+                )
+                move_done.set()
+
+        def read_state():
+            with app.test_client() as state_client:
+                results["state"] = state_client.get("/api/state")
+                state_done.set()
+
+        move_thread = threading.Thread(target=submit, daemon=True)
+        state_thread = threading.Thread(target=read_state, daemon=True)
+        move_thread.start()
+        try:
+            self.assertTrue(entered.wait(2), "Engine inference did not start")
+            self.assertTrue(move_done.wait(2), "Move acknowledgement waited for inference")
+            state_thread.start()
+            self.assertTrue(state_done.wait(2), "State request waited for inference")
+            self.assertEqual(results["move"].status_code, 200)
+            self.assertEqual(results["move"].json["state"]["ply"], 1)
+            self.assertEqual(results["state"].json["history"], [{"role": "You", "text": "e4"}])
+            self.assertTrue(results["state"].json["maia_thinking"])
+        finally:
+            release.set()
+            move_thread.join(2)
+            if state_thread.ident is not None:
+                state_thread.join(2)
+        self.assertEqual(self.wait_for_maia(client)["ply"], 2)
+
+    def test_maia_timeout_during_inference_does_not_apply_a_late_move(self):
+        release = threading.Event()
+        entered = threading.Event()
+        now = [0.0]
+
+        class BlockingEngine(FakeEngine):
+            def play(self, board, limit, info=None):
+                entered.set()
+                if not release.wait(5):
+                    raise RuntimeError("Engine test was not released")
+                return super().play(board, limit, info)
+
+        client = create_app(
+            BlockingEngine(), player_data_path=self.player_data_path
+        ).test_client()
+        with (
+            patch.dict(TIME_CONTROLS["blitz"], {"1+0": (1, 0)}),
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "save_pgn_file", return_value=Path("timeout.pgn")),
+        ):
+            client.post("/api/start", json={"color": "white", "time_control": "1+0"})
+            client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+            try:
+                self.assertTrue(entered.wait(2))
+                now[0] = 2
+                state = client.get("/api/state").json
+                self.assertTrue(state["game_over"])
+                self.assertEqual(state["termination"], "timeout")
+                self.assertEqual(state["ply"], 1)
+            finally:
+                release.set()
+            state = self.wait_for_maia(client)
+
+        self.assertEqual(state["ply"], 1)
+        self.assertEqual(state["result"], "1-0")
+        self.assertEqual(state["history"], [{"role": "You", "text": "e4"}])
+
     def test_positions_track_captured_pieces_for_each_player(self):
         self.engine.moves = ["d5", "Qxd5"]
         self.client.post("/api/start", json={"color": "white"})
         self.client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        self.wait_for_maia()
         response = self.client.post(
             "/api/move",
             json={"move": "e4d5", "expected_ply": 2},
         )
 
-        state = response.json["state"]
         self.assertEqual(response.status_code, 200)
+        state = self.wait_for_maia()
         self.assertEqual(state["positions"][0]["captured_pieces"], {
             "white": [],
             "black": [],
@@ -671,7 +777,9 @@ class ChessgroundAppTests(unittest.TestCase):
         self.engine.moves = ["a6", "d5", "Nf6"]
         self.client.post("/api/start", json={"color": "white"})
         self.client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        self.wait_for_maia()
         self.client.post("/api/move", json={"move": "e4e5", "expected_ply": 2})
+        self.wait_for_maia()
         response = self.client.post(
             "/api/move",
             json={"move": "e5d6", "expected_ply": 4},
@@ -682,6 +790,7 @@ class ChessgroundAppTests(unittest.TestCase):
             response.json["state"]["captured_pieces"]["white"],
             ["p"],
         )
+        self.wait_for_maia()
 
     def test_stale_move_is_rejected_without_changing_position(self):
         self.client.post("/api/start", json={"color": "white"})
@@ -689,6 +798,7 @@ class ChessgroundAppTests(unittest.TestCase):
             "/api/move",
             json={"move": "e2e4", "expected_ply": 0},
         )
+        self.wait_for_maia()
         second = self.client.post(
             "/api/move",
             json={"move": "d2d4", "expected_ply": 0},
@@ -699,9 +809,23 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(second.json["state"]["ply"], 2)
         self.assertEqual(len(second.json["state"]["history"]), 2)
 
-    def test_engine_failure_rolls_back_the_players_move(self):
+    def test_move_from_an_old_match_is_rejected_at_the_same_ply(self):
+        first = self.client.post("/api/start", json={"color": "white"}).json["state"]
+        self.client.post("/api/new-game")
+        second = self.client.post("/api/start", json={"color": "white"}).json["state"]
+
+        response = self.client.post("/api/move", json={
+            "move": "e2e4", "expected_ply": 0, "match_id": first["match_id"],
+        })
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json["state"]["match_id"], second["match_id"])
+        self.assertEqual(response.json["state"]["ply"], 0)
+
+    def test_engine_failure_preserves_the_players_move_and_can_retry(self):
+        engine = FakeEngine(error=RuntimeError("engine failed"))
         client = create_app(
-            FakeEngine(error=RuntimeError("engine failed")),
+            engine,
             player_data_path=self.player_data_path,
         ).test_client()
         client.post("/api/start", json={"color": "white"})
@@ -711,9 +835,70 @@ class ChessgroundAppTests(unittest.TestCase):
             json={"move": "e2e4", "expected_ply": 0},
         )
 
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 200)
+        state = self.wait_for_maia(client)
+        self.assertEqual(state["ply"], 1)
+        self.assertEqual(state["history"], [{"role": "You", "text": "e4"}])
+        self.assertIn("Retry", state["maia_error"])
+        self.assertIsNone(state["clock"]["running_color"])
+        engine.error = None
+        retry = client.post("/api/retry-maia")
+        self.assertEqual(retry.status_code, 200)
+        self.assertTrue(retry.json["state"]["maia_thinking"])
+        state = self.wait_for_maia(client)
+        self.assertIsNone(state["maia_error"])
+        self.assertEqual(state["ply"], 2)
+        self.assertEqual(state["history"][-1]["text"], "e5")
+
+    def test_engine_failure_pauses_clock_until_retry(self):
+        now = [0.0]
+
+        class FailOnceEngine(FakeEngine):
+            def play(self, board, limit, info=None):
+                if now[0] == 0:
+                    now[0] = 2
+                    raise RuntimeError("engine failed")
+                return super().play(board, limit, info)
+
+        def think_for_three_seconds(_session, _seconds):
+            now[0] += 3
+
+        client = create_app(
+            FailOnceEngine(), player_data_path=self.player_data_path
+        ).test_client()
+        with (
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "wait_for_maia_think", think_for_three_seconds),
+        ):
+            client.post("/api/start", json={"color": "white"})
+            client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+            state = self.wait_for_maia(client)
+            self.assertEqual(state["clock"]["remaining_ms"]["black"], 178_000)
+            now[0] = 22
+            paused = client.get("/api/state").json
+            self.assertEqual(paused["clock"]["remaining_ms"]["black"], 178_000)
+            client.post("/api/retry-maia")
+            state = self.wait_for_maia(client)
+
+        self.assertEqual(state["clock"]["remaining_ms"]["black"], 177_000)
+        self.assertEqual(client.application.config["CHESS_GAME"].move_times[1], 5)
+
+    def test_undo_after_engine_failure_restores_player_turn(self):
+        client = create_app(
+            FakeEngine(error=RuntimeError("engine failed")),
+            player_data_path=self.player_data_path,
+        ).test_client()
+        client.post("/api/start", json={"color": "white"})
+        client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        self.wait_for_maia(client)
+
+        response = client.post("/api/command", json={"command": "undo"})
+
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["state"]["ply"], 0)
-        self.assertEqual(response.json["state"]["history"], [])
+        self.assertIsNone(response.json["state"]["maia_error"])
+        self.assertEqual(response.json["state"]["clock"]["running_color"], "white")
+        self.assertTrue(response.json["state"]["can_move"])
 
     def test_illegal_move_does_not_change_position(self):
         self.client.post("/api/start", json={"color": "white"})
@@ -776,6 +961,7 @@ class ChessgroundAppTests(unittest.TestCase):
                 "/api/move",
                 json={"move": "e2e4", "expected_ply": 0},
             )
+            self.wait_for_maia()
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json["play_instantly"])
@@ -851,6 +1037,7 @@ class ChessgroundAppTests(unittest.TestCase):
     def test_undo_and_new_game_restore_the_initial_state(self):
         self.client.post("/api/start", json={"color": "white"})
         self.client.post("/api/move", json={"move": "e2e4", "expected_ply": 0})
+        self.wait_for_maia()
 
         undo = self.client.post("/api/command", json={"command": "undo"})
 

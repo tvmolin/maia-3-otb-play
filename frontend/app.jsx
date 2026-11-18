@@ -209,7 +209,7 @@ function useChessSounds(state) {
 
 function isCaptureMove(state, moveKey) {
   const destination = moveKey.slice(2, 4);
-  const [board, , , enPassant] = state.fen.split(' ');
+  const [board, , , enPassant] = (state.full_fen || state.fen).split(' ');
   const rows = board.split('/');
   let file = destination.charCodeAt(0) - 97;
   const rank = Number(destination[1]);
@@ -326,7 +326,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
   const elementRef = useRef(null);
   const groundRef = useRef(null);
   const moveRef = useRef(onMove);
-  const previousPendingMoveRef = useRef(null);
+  const previousWaitingRef = useRef(false);
   const fitBoardRef = useRef(() => {});
   moveRef.current = onMove;
 
@@ -410,8 +410,8 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
     };
     const reviewing = activePly !== state.ply;
     const canMove = Boolean(state.can_move) && !reviewing;
-    if (requestPending && pendingMove?.basePly === state.ply) {
-      previousPendingMoveRef.current = pendingMove;
+    if (requestPending && pendingMove?.basePly === state.ply && !reviewing) {
+      previousWaitingRef.current = true;
       groundRef.current.set({
         turnColor: state.player_color === 'white' ? 'black' : 'white',
         check: pendingMove.givesCheck
@@ -426,7 +426,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
       });
       return;
     }
-    const completedMove = previousPendingMoveRef.current;
+    const waiting = Boolean(state.maia_thinking) && !state.game_over;
     groundRef.current.set({
       fen: position.fen,
       orientation: state.player_color || 'white',
@@ -434,17 +434,17 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
       lastMove: position.last_move || undefined,
       check: position.check ? position.turn_color : false,
       movable: {
-        color: canMove ? state.player_color : undefined,
+        color: canMove || (waiting && !reviewing) ? state.player_color : undefined,
         dests: destinationsToMap(canMove ? state.destinations : {}),
         events: { after: (...args) => moveRef.current(...args) },
       },
       premovable: { enabled: state.started && !state.game_over && !reviewing },
     });
-    if (completedMove && !pendingMove) {
-      if (state.ply > completedMove.basePly) groundRef.current.playPremove();
-      else if (!requestPending) groundRef.current.cancelPremove();
+    if (previousWaitingRef.current && !waiting && !pendingMove && !requestPending) {
+      if (canMove) groundRef.current.playPremove();
+      else groundRef.current.cancelPremove();
     }
-    previousPendingMoveRef.current = pendingMove;
+    previousWaitingRef.current = waiting || Boolean(pendingMove);
   }, [state, reviewPly, requestPending, pendingMove]);
 
   return (
@@ -613,6 +613,35 @@ function App() {
     refreshState().catch((error) => setStatusOverride(error.message));
   }, [refreshState]);
 
+  useEffect(() => {
+    if (!state?.maia_thinking || !state.match_id) return undefined;
+    const matchId = state.match_id;
+    const controller = new AbortController();
+    let timer;
+    const poll = async () => {
+      try {
+        const response = await fetch('/api/state', { signal: controller.signal, cache: 'no-store' });
+        const nextState = await readJson(response);
+        const current = stateRef.current;
+        if (!controller.signal.aborted && current?.match_id === matchId
+            && current.maia_thinking && nextState.match_id === matchId
+            && nextState.ply >= current.ply) {
+          updateState(nextState);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setStatusOverride('Could not refresh the game. Retrying…');
+        }
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(poll, 300);
+    };
+    timer = window.setTimeout(poll, 300);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [state?.maia_thinking, state?.match_id, readJson, updateState]);
+
   const activePly = reviewPly ?? state?.ply ?? 0;
   const reviewing = Boolean(state && activePly !== state.ply);
   const position = state?.positions?.[activePly] || state;
@@ -639,14 +668,16 @@ function App() {
       const response = await fetch('/api/move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ move, expected_ply: current.ply }),
+        body: JSON.stringify({ move, expected_ply: current.ply, match_id: current.match_id }),
       });
       const data = await readJson(response);
       updateState(data.state);
       setPendingMove(null);
     } catch (error) {
+      await refreshState().catch((refreshError) => {
+        console.warn('Could not refresh the game after the move failed:', refreshError);
+      });
       setStatusOverride(error.message);
-      await refreshState().catch((refreshError) => setStatusOverride(refreshError.message));
       setPendingMove(null);
     } finally {
       setPending(false);
@@ -711,6 +742,18 @@ function App() {
       setPending(false);
     }
   }, [readJson, refreshState, setPending, updateState]);
+
+  const retryMaia = async () => {
+    setPending(true);
+    try {
+      const response = await fetch('/api/retry-maia', { method: 'POST' });
+      updateState((await readJson(response)).state);
+    } catch (error) {
+      setStatusOverride(error.message);
+    } finally {
+      setPending(false);
+    }
+  };
 
   const findMatch = async (event) => {
     event.preventDefault();
@@ -792,6 +835,7 @@ function App() {
     if (reviewing) return `Reviewing move ${activePly} of ${state?.ply}.`;
     if (state?.game_over) return `Final score: ${state.result || '—'}`;
     if (!state?.started) return 'Choose a time control and find a match.';
+    if (state.maia_error) return state.maia_error;
     if (state.maia_thinking || requestPending) return `${state.maia_name || 'Maia'} is thinking…`;
     const summary = `You (${state.player_elo}) are ${state.player_color} vs ${state.maia_name || 'Maia'} (${state.maia_elo}). `;
     return state.can_move ? `${summary}Your move.` : `${summary}Waiting for Maia.`;
@@ -906,6 +950,9 @@ function App() {
                     </div>
                   )}
                   <Group className="actions">
+                    {state.maia_error && (
+                      <Button onClick={retryMaia} disabled={requestPending}>Retry Maia</Button>
+                    )}
                     <Button onClick={newGame} disabled={requestPending || state.maia_thinking}>
                       {state.game_over ? 'Play again' : 'End match'}
                     </Button>

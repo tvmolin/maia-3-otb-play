@@ -300,7 +300,13 @@ in match history and PGN. Draws count as half a point.
 Open **Profile** to switch between your Blitz and Rapid rating graphs and match
 histories. Completed PGNs are saved with each match-history entry and can be
 copied from its row. The backend validates moves and remains the source of truth
-for game state.
+for game state. Your accepted move appears in the move list and captured-piece
+display before Maia finishes thinking. If the engine fails, your move is kept
+and the clock is paused; use **Retry Maia** or **Undo** to continue.
+The Chessground `POST /api/move` response contains the accepted player position
+and, unless the game has ended, `maia_thinking: true`; `GET /api/state` reports
+Maia's subsequent move or an engine error. `POST /api/retry-maia` retries a
+failed engine turn.
 The app uses the 79M model, which must be downloaded before play. The available
 game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
 Both clocks are enforced by the server, including Maia's engine and think time.

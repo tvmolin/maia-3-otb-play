@@ -9,6 +9,7 @@ import json
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ from werkzeug.serving import run_simple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import chessground_app  # noqa: E402
+import lichess_import  # noqa: E402
 import maia_game  # noqa: E402
 
 DEFAULT_THINK_SECONDS = 0.3
@@ -60,11 +62,37 @@ class Server:
         )
         board = chess.Board(options["fen"]) if "fen" in options else None
         engine = ScriptedEngine(options.get("engine_moves", ()), options.get("engine_fails", False))
+        failures = [options.get("lichess_fail", False)]
+
+        def import_game(token, pgn):
+            time.sleep(options.get("lichess_delay", 0))
+            if failures.pop() if failures else False:
+                raise RuntimeError("HTTP 429")
+            return "https://lichess.org/abcd1234/analysis"
+
+        lichess_import.import_game = import_game
+        importer = (
+            lichess_import.LichessImporter("test-token", self.storage)
+            if options.get("lichess") else None
+        )
         self.app = chessground_app.create_app(
             engine,
             board=board,
             player_data_path=self.storage / f"ladder-{self.generation}.json",
+            lichess_importer=importer,
         )
+        if options.get("legacy_match"):
+            self.app.config["CHESSGROUND_LADDER"].record_match({
+                "match_id": "legacy-match",
+                "finished_at": "2026-01-01T12:00:00Z",
+                "result": "1-0",
+                "player_color": "white",
+                "rating_category": "blitz",
+                "maia_elo": 800,
+                "time_control": "3+2",
+                "pgn_file": f"legacy-{self.generation}.pgn",
+                "pgn": "1. e4 e5 1-0",
+            })
 
     def __call__(self, environ, start_response):
         if environ["PATH_INFO"] == "/__e2e__/reset" and environ["REQUEST_METHOD"] == "POST":

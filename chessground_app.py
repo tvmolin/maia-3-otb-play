@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import random
 import threading
@@ -10,6 +11,7 @@ import chess
 from flask import Flask, jsonify, render_template, request
 
 from ladder import DEFAULT_PLAYER_ELO, RATING_CATEGORIES, LadderStore
+from lichess_import import configured_importer, read_status
 from maia_game import GameSession, create_engine
 
 
@@ -103,7 +105,7 @@ class ChessClock:
         }
 
 
-def create_app(engine, board=None, player_data_path=None):
+def create_app(engine, board=None, player_data_path=None, lichess_importer=None):
     app = Flask(__name__)
     ladder = LadderStore(
         player_data_path
@@ -117,6 +119,7 @@ def create_app(engine, board=None, player_data_path=None):
         maia_elo=MAIA_ELO,
         board=board,
         started=False,
+        lichess_importer=lichess_importer,
     )
     app.config["CHESS_GAME"] = game
     app.config["CHESSGROUND_LADDER"] = ladder
@@ -363,6 +366,26 @@ def create_app(engine, board=None, player_data_path=None):
             )
         return render_template("chessground.html")
 
+    def match_pgn_path(match):
+        games_dir = ladder.path.parent.resolve()
+        pgn_file = match.get("pgn_file")
+        if pgn_file is None and isinstance(match.get("pgn"), str) and match["pgn"].strip():
+            digest = hashlib.sha256(match["match_id"].encode("utf-8")).hexdigest()
+            pgn_file = f"lichess-match-{digest}.pgn"
+        if not isinstance(pgn_file, str) or Path(pgn_file).name != pgn_file:
+            return None
+        path = (games_dir / pgn_file).resolve()
+        if path.parent != games_dir or path.suffix != ".pgn":
+            return None
+        return path
+
+    def match_lichess_status(pgn_path):
+        try:
+            return read_status(pgn_path)
+        except (OSError, ValueError):
+            app.logger.exception("Could not read Lichess status for %s", pgn_path.name)
+            return {"status": "failed", "error": "Could not read import status."}
+
     @app.get("/profile")
     def profile():
         category = request.args.get("category", "blitz")
@@ -371,16 +394,19 @@ def create_app(engine, board=None, player_data_path=None):
         with app.config["CHESSGROUND_REQUEST_LOCK"]:
             matches = [dict(match) for match in ladder.matches_for(category)]
             player_elo = ladder.rating_for(category)
-        games_dir = ladder.path.parent.resolve()
         for match in matches:
-            if isinstance(match.get("pgn"), str) and match["pgn"]:
+            pgn_path = match_pgn_path(match)
+            if pgn_path is None:
                 continue
-            pgn_file = match.get("pgn_file")
-            if not isinstance(pgn_file, str) or Path(pgn_file).name != pgn_file:
-                continue
-            pgn_path = (games_dir / pgn_file).resolve()
-            if pgn_path.parent == games_dir and pgn_path.is_file():
+            match["lichess"] = match_lichess_status(pgn_path)
+            match["lichess_retry_available"] = lichess_importer is not None
+            if not match.get("pgn") and pgn_path.is_file():
                 match["pgn"] = pgn_path.read_text(encoding="utf-8").rstrip()
+            match["lichess_import_available"] = (
+                lichess_importer is not None
+                and isinstance(match.get("pgn"), str)
+                and bool(match["pgn"].strip())
+            )
 
         color_stats = {
             color: {"games": 0, "wins": 0, "draws": 0, "losses": 0, "score": 0}
@@ -459,6 +485,55 @@ def create_app(engine, board=None, player_data_path=None):
             chart_min=chart_min,
             chart_max=chart_max,
         )
+
+    @app.get("/api/lichess/status")
+    def lichess_status():
+        category = request.args.get("category", "blitz")
+        if category not in RATING_CATEGORIES:
+            return jsonify(error="Choose blitz or rapid."), 400
+        requested_ids = set(request.args.getlist("match_id"))
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            matches = [dict(match) for match in ladder.matches_for(category)]
+        statuses = []
+        for match in matches:
+            if requested_ids and match["match_id"] not in requested_ids:
+                continue
+            pgn_path = match_pgn_path(match)
+            statuses.append({
+                "match_id": match["match_id"],
+                "lichess": match_lichess_status(pgn_path) if pgn_path else None,
+            })
+        return jsonify(matches=statuses)
+
+    @app.post("/api/lichess/retry/<match_id>")
+    @app.post("/api/lichess/import/<match_id>")
+    def import_match_to_lichess(match_id):
+        if lichess_importer is None:
+            return jsonify(error="Lichess import is not configured."), 503
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            match = next(
+                (match for category in RATING_CATEGORIES
+                 for match in ladder.matches_for(category)
+                 if match["match_id"] == match_id),
+                None,
+            )
+            if match is None:
+                return jsonify(error="Match not found."), 404
+            pgn_path = match_pgn_path(match)
+            if pgn_path is None:
+                return jsonify(error="The match has no saved PGN."), 409
+            try:
+                queued = lichess_importer.enqueue(
+                    pgn_path, retry=True, fallback_pgn=match.get("pgn")
+                )
+            except FileNotFoundError:
+                return jsonify(error="The match has no saved PGN."), 409
+            except (OSError, ValueError, RuntimeError):
+                app.logger.exception("Could not import match %s to Lichess", match_id)
+                return jsonify(error="Could not import to Lichess; check the server log."), 500
+            if not queued:
+                return jsonify(error="This game is already imported or being imported."), 409
+        return jsonify(status="pending")
 
     @app.get("/api/state")
     def get_state():
@@ -706,14 +781,19 @@ def main():
         MAIA_ELO - MAIA_ENGINE_ELO_OFFSET,
         PLAYER_ELO,
     )
-    app = create_app(engine)
+    importer = configured_importer()
+    app = create_app(engine, lichess_importer=importer)
     url = f"http://{HOST}:{PORT}/"
     print(f"Starting the Chessground app at {url}", flush=True)
     threading.Timer(1, webbrowser.open, args=(url,)).start()
     try:
         app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
     finally:
-        engine.quit()
+        try:
+            engine.quit()
+        finally:
+            if importer is not None:
+                importer.close()
 
 
 if __name__ == "__main__":

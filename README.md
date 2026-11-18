@@ -303,6 +303,41 @@ The app uses the 79M model, which must be downloaded before play. The available
 game clocks are Blitz 3+2 and 5+5, and Rapid 15+10 and 20+10.
 Both clocks are enforced by the server, including Maia's engine and think time.
 
+### Automatic Lichess imports
+
+To automatically import completed games, create a
+[Lichess personal access token](https://lichess.org/account/oauth/token) and
+put it in a `.env` file in the repository root:
+
+```text
+LICHESS_API_TOKEN=your-token-here
+```
+
+The import endpoint requires no extra token scopes. A `LICHESS_API_TOKEN`
+environment variable takes precedence over `.env`. Keep the token secret;
+`.env` is ignored by Git. Restart the app after changing the token. Without a
+token, importing is disabled. Install the project dependencies again after
+updating the project to add `.env` support.
+
+The Chessground, local web, and terminal interfaces save completed games locally
+first and then import them in the background. Chessground's Profile updates
+automatically to show the Lichess analysis link when an import finishes.
+Imported games appear in your Lichess imported-games
+collection. Unfinished games are not imported.
+
+For an older match that was not automatically imported, use **Import to
+Lichess** in its Profile row. The button requires a configured token and a
+saved PGN. If the PGN file is missing but the match history contains its PGN,
+the app restores a local copy before importing it.
+
+Import failures are logged and shown on the Chessground profile, where they can
+be retried. A timeout or interrupted import may have succeeded on Lichess even
+if the app could not confirm it; check your imported games before retrying to
+avoid duplicates. Import status is stored beside the PGN in the `games` folder.
+Lichess's public import API does not request full server-side computer analysis:
+open the link and request it on Lichess. Imports are subject to Lichess rate
+limits and are not private by default.
+
 The Chessground interface uses the Tatiana chess-piece artwork by sadsnake1,
 from [Lichess](https://github.com/lichess-org/lila/tree/master/public/piece/tatiana),
 under the [CC BY-NC-SA 4.0 license](https://creativecommons.org/licenses/by-nc-sa/4.0/).

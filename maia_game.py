@@ -1,3 +1,4 @@
+import logging
 import math
 import secrets
 import sys
@@ -114,6 +115,7 @@ class GameSession:
         temperature=0.8,
         board=None,
         started=True,
+        lichess_importer=None,
     ):
         self.engine = engine
         self.board = board if board is not None else chess.Board()
@@ -132,6 +134,7 @@ class GameSession:
         self.final_result = None
         self.saved_pgn_path = None
         self.saved_pgn_text = None
+        self.lichess_importer = lichess_importer
         self._think_skip = Event()
         self._think_state_lock = Lock()
         self._maia_turn_active = False
@@ -263,6 +266,13 @@ class GameSession:
             if self.saved_pgn_path is None:
                 self.saved_pgn_text = self.build_pgn(self.result)
                 self.saved_pgn_path = save_pgn(self.saved_pgn_text)
+                if self.lichess_importer is not None:
+                    try:
+                        self.lichess_importer.enqueue(self.saved_pgn_path)
+                    except (OSError, ValueError, RuntimeError):
+                        logging.getLogger(__name__).exception(
+                            "Could not queue the saved game for Lichess import."
+                        )
             return self.saved_pgn_path
 
     def handle_player_command(self, text):

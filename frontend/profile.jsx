@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Anchor, Button, MantineProvider, Paper, Table, Title } from '@mantine/core';
 import { IconArrowLeft, IconCopy } from '@tabler/icons-react';
 import { createRoot } from 'react-dom/client';
@@ -10,6 +10,55 @@ const data = window.__PROFILE_DATA__;
 
 function Profile() {
   const [status, setStatus] = useState('');
+  const [refreshError, setRefreshError] = useState('');
+  const [matches, setMatches] = useState(data.matches);
+  const [submitting, setSubmitting] = useState([]);
+  const pendingIds = JSON.stringify(matches
+    .filter((match) => ['pending', 'uploading'].includes(match.lichess?.status))
+    .map((match) => match.match_id));
+
+  useEffect(() => {
+    const ids = new Set(JSON.parse(pendingIds));
+    if (!ids.size) return undefined;
+    const controller = new AbortController();
+    const params = new URLSearchParams({ category: data.category });
+    ids.forEach((id) => params.append('match_id', id));
+    let timer;
+    const updateStatuses = async () => {
+      try {
+        const response = await fetch(`/api/lichess/status?${params}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error('Could not check Lichess import status.');
+        const result = await response.json();
+        if (controller.signal.aborted) return;
+        const statuses = new Map(result.matches.map((match) => [match.match_id, match.lichess]));
+        setMatches((current) => current.map((match) => {
+          if (!ids.has(match.match_id)) return match;
+          return {
+            ...match,
+            lichess: statuses.get(match.match_id) || {
+              status: 'failed',
+              error: 'Import status is unavailable; check Lichess before retrying.',
+            },
+          };
+        }));
+        setRefreshError('');
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setRefreshError('Could not check Lichess import status. Retrying automatically.');
+        }
+      }
+      if (!controller.signal.aborted) timer = window.setTimeout(updateStatuses, 2000);
+    };
+    void updateStatuses();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [pendingIds]);
+
   const copyPgn = async (pgn) => {
     try {
       await navigator.clipboard.writeText(pgn);
@@ -18,8 +67,23 @@ function Profile() {
       setStatus(`Clipboard access is unavailable. PGN: ${pgn}`);
     }
   };
+  const importToLichess = async (matchId) => {
+    setSubmitting((current) => [...current, matchId]);
+    try {
+      const response = await fetch(`/api/lichess/import/${encodeURIComponent(matchId)}`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not import the game.');
+      setMatches((current) => current.map((match) => (
+        match.match_id === matchId ? { ...match, lichess: { status: result.status } } : match
+      )));
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setSubmitting((current) => current.filter((id) => id !== matchId));
+    }
+  };
   const categoryName = data.category[0].toUpperCase() + data.category.slice(1);
-  const matchRows = data.matches.length ? data.matches.map((match) => (
+  const matchRows = matches.length ? matches.map((match) => (
     <tr key={`${match.finished_at}-${match.pgn_file}`}>
       <td><time dateTime={match.finished_at}>{new Date(match.finished_at).toLocaleString()}</time></td>
       <td>{match.opponent_name || 'Maia'} ({match.maia_elo})</td>
@@ -37,9 +101,35 @@ function Profile() {
           </Button>
         ) : 'No PGN saved'}
       </td>
+      <td aria-live="polite">
+        {match.lichess?.status === 'imported' && (
+          <Anchor href={match.lichess.url} target="_blank" rel="noopener noreferrer">Lichess analysis</Anchor>
+        )}
+        {['pending', 'uploading'].includes(match.lichess?.status) && 'Importing…'}
+        {match.lichess?.status === 'failed' && (
+          <>
+            <span>Import failed: {match.lichess.error}</span>
+            {match.lichess_retry_available && (
+              <Button size="compact-sm" variant="light" loading={submitting.includes(match.match_id)} onClick={() => importToLichess(match.match_id)}>Retry import</Button>
+            )}
+          </>
+        )}
+        {!match.lichess && (
+          <Button
+            size="compact-sm"
+            variant="light"
+            disabled={!match.lichess_import_available}
+            loading={submitting.includes(match.match_id)}
+            title={!match.lichess_import_available ? 'Configure Lichess and ensure a saved PGN is available.' : undefined}
+            onClick={() => importToLichess(match.match_id)}
+          >
+            Import to Lichess
+          </Button>
+        )}
+      </td>
     </tr>
   )) : (
-    <tr><td className="empty-history" colSpan="8">No matches yet. Play a match to start your history.</td></tr>
+    <tr><td className="empty-history" colSpan="9">No matches yet. Play a match to start your history.</td></tr>
   );
 
   return (
@@ -88,11 +178,11 @@ function Profile() {
             </div>
             <div className="profile-table-wrap">
               <Table className="profile-table">
-                <Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Opponent</Table.Th><Table.Th>Piece color</Table.Th><Table.Th>Result</Table.Th><Table.Th>Time control</Table.Th><Table.Th>Rating change</Table.Th><Table.Th>Rating</Table.Th><Table.Th>PGN</Table.Th></Table.Tr></Table.Thead>
+                <Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Opponent</Table.Th><Table.Th>Piece color</Table.Th><Table.Th>Result</Table.Th><Table.Th>Time control</Table.Th><Table.Th>Rating change</Table.Th><Table.Th>Rating</Table.Th><Table.Th>PGN</Table.Th><Table.Th>Lichess</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{matchRows}</Table.Tbody>
               </Table>
             </div>
-            <p id="pgn-copy-status" role="status" aria-live="polite">{status}</p>
+            <p id="pgn-copy-status" role="status" aria-live="polite">{status} {refreshError}</p>
           </Paper>
         </div>
       </main>

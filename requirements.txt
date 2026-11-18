@@ -2,4 +2,5 @@ huggingface-hub
 flask>=3.0,<4.0
 numpy
 python-chess
+python-dotenv>=1.0,<2
 torch

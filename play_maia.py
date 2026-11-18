@@ -5,6 +5,7 @@ import time
 
 import chess
 
+from lichess_import import configured_importer
 from maia_game import (
     HELP_TEXT,
     GameSession,
@@ -119,6 +120,7 @@ def main():
     player_color = prompt_color()
     session = None
     final_result = None
+    importer = configured_importer()
 
     try:
         print("\nLoading Maia model...", flush=True)
@@ -129,6 +131,7 @@ def main():
             player_name="Devonty",
             player_elo=player_elo,
             maia_elo=maia_elo,
+            lichess_importer=importer,
         )
         print("Maia is ready.", flush=True)
 
@@ -171,17 +174,27 @@ def main():
         if final_result:
             print("Game result:", final_result)
     finally:
-        if session is not None:
-            try:
-                session.engine.quit()
-            finally:
-                if session.is_game_over:
-                    pgn_path = session.save_pgn_file()
-                    print(f"\nSaved PGN to: {pgn_path}")
-                    print(
-                        "\nGame PGN:\n"
-                        + pgn_path.read_text(encoding="utf-8").rstrip()
-                    )
+        try:
+            if session is not None:
+                try:
+                    session.engine.quit()
+                finally:
+                    if session.is_game_over:
+                        pgn_path = session.save_pgn_file()
+                        print(f"\nSaved PGN to: {pgn_path}")
+                        print(
+                            "\nGame PGN:\n"
+                            + pgn_path.read_text(encoding="utf-8").rstrip()
+                        )
+        finally:
+            if importer is not None:
+                importer.close()
+                if session is not None and session.saved_pgn_path is not None:
+                    status = importer.status(session.saved_pgn_path)
+                    if status and status["status"] == "imported":
+                        print(f"Lichess analysis: {status['url']}")
+                    elif status and status["status"] == "failed":
+                        print(f"Lichess import failed: {status['error']}")
 
 
 if __name__ == "__main__":

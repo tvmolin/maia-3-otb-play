@@ -1,13 +1,14 @@
 import chess
 from flask import Flask, jsonify, render_template, request
 
+from lichess_import import configured_importer
 from maia_game import GameSession, create_engine
 
 MAIA_ELO = 800
 PLAYER_ELO = 760
 
 
-def create_app(engine, board=None):
+def create_app(engine, board=None, lichess_importer=None):
     app = Flask(__name__)
     game = GameSession(
         engine,
@@ -17,6 +18,7 @@ def create_app(engine, board=None):
         maia_elo=MAIA_ELO,
         board=board,
         started=False,
+        lichess_importer=lichess_importer,
     )
     app.config["CHESS_GAME"] = game
 
@@ -190,13 +192,18 @@ def main():
     print("Loading Maia model...", flush=True)
     engine = create_engine(MAIA_ELO, PLAYER_ELO)
     app = None
+    importer = configured_importer()
     try:
-        app = create_app(engine)
+        app = create_app(engine, lichess_importer=importer)
         print("Starting local chess server at http://0.0.0.0:5000", flush=True)
         print("Open http://<PC-IP>:5000 on a device on the same Wi-Fi network.")
         app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
     finally:
-        engine.quit()
+        try:
+            engine.quit()
+        finally:
+            if importer is not None:
+                importer.close()
 
 
 if __name__ == "__main__":

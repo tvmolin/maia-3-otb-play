@@ -457,6 +457,63 @@ test.describe('ending a game', () => {
 });
 
 test.describe('profile', () => {
+  test('imports an older match from the profile', async ({ page, request }) => {
+    await resetServer(request, { lichess: true, legacy_match: true, lichess_delay: 1.5 });
+    await page.goto('/profile');
+    await page.evaluate(() => { window.profileMarker = 'unchanged'; });
+    const button = page.getByRole('button', { name: 'Import to Lichess' });
+    await expect(button).toBeEnabled();
+    await button.click();
+    await expect(page.getByText('Importing…')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Lichess analysis' }))
+      .toHaveAttribute('href', 'https://lichess.org/abcd1234/analysis');
+    expect(await page.evaluate(() => window.profileMarker)).toBe('unchanged');
+    await expect(page.getByRole('button', { name: 'Import to Lichess' })).toHaveCount(0);
+  });
+
+  test('recovers from a temporary status check failure without reloading', async ({ page, request }) => {
+    await resetServer(request, { lichess: true, legacy_match: true, lichess_delay: 2.5 });
+    let checks = 0;
+    await page.route('**/api/lichess/status?*', async (route) => {
+      checks += 1;
+      if (checks === 1) await route.fulfill({ status: 503, body: 'Unavailable' });
+      else await route.continue();
+    });
+    await page.goto('/profile');
+    await page.evaluate(() => { window.profileMarker = 'unchanged'; });
+    await page.getByRole('button', { name: 'Import to Lichess' }).click();
+    await expect(page.getByRole('status')).toContainText('Could not check Lichess import status');
+    await expect(page.getByRole('link', { name: 'Lichess analysis' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('status')).not.toContainText('Could not check Lichess import status');
+    expect(await page.evaluate(() => window.profileMarker)).toBe('unchanged');
+  });
+
+  test('links a finished match to its imported Lichess analysis', async ({ page, request }) => {
+    await startScenario(page, request, { lichess: true, lichess_delay: 1.5 });
+    await resign(page);
+    await page.goto('/profile');
+
+    await page.evaluate(() => { window.profileMarker = 'unchanged'; });
+    await expect(page.getByText('Importing…')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Lichess analysis' }))
+      .toHaveAttribute('href', 'https://lichess.org/abcd1234/analysis');
+    expect(await page.evaluate(() => window.profileMarker)).toBe('unchanged');
+  });
+
+  test('shows an import failure and allows retrying', async ({ page, request }) => {
+    await startScenario(page, request, { lichess: true, lichess_fail: true, lichess_delay: 1.5 });
+    await resign(page);
+    await page.goto('/profile');
+    await page.evaluate(() => { window.profileMarker = 'unchanged'; });
+    await expect(page.getByText('Importing…')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry import' })).toBeVisible();
+    await expect(page.getByText('Import failed: HTTP 429')).toBeVisible();
+    await page.getByRole('button', { name: 'Retry import' }).click();
+    await expect(page.getByText('Importing…')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Lichess analysis' })).toBeVisible();
+    expect(await page.evaluate(() => window.profileMarker)).toBe('unchanged');
+  });
+
   test('lists finished matches per rating category', async ({ page, request }) => {
     await startScenario(page, request, { engine_moves: ['e5'] });
     await movePiece(page, 'e2', 'e4');
@@ -471,6 +528,7 @@ test.describe('profile', () => {
     await expect(match).toContainText('Loss');
     await expect(match).toContainText('White');
     await expect(match.getByRole('button', { name: 'Copy PGN' })).toBeVisible();
+    await expect(match.getByRole('button', { name: 'Import to Lichess' })).toBeDisabled();
 
     await page.getByRole('link', { name: 'Rapid' }).click();
     await expect(page.getByRole('heading', { name: 'Rapid rating progress' })).toBeVisible();

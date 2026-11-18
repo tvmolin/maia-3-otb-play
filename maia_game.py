@@ -78,7 +78,24 @@ def format_move_list(board):
     return " ".join(moves) if moves else "(no moves yet)"
 
 
-def build_pgn(board, player_color, player_name, player_elo, maia_name, maia_elo, result):
+def format_elapsed_time(seconds):
+    centiseconds = max(0, round(seconds * 100))
+    hours, remainder = divmod(centiseconds, 360_000)
+    minutes, remainder = divmod(remainder, 6_000)
+    whole_seconds, centiseconds = divmod(remainder, 100)
+    return f"{hours}:{minutes:02d}:{whole_seconds:02d}.{centiseconds:02d}"
+
+
+def build_pgn(
+    board,
+    player_color,
+    player_name,
+    player_elo,
+    maia_name,
+    maia_elo,
+    result,
+    move_times=None,
+):
     game = chess.pgn.Game.from_board(board)
     game.headers["Event"] = "OTB Maia game"
     game.headers["Date"] = datetime.now().strftime("%Y.%m.%d")
@@ -87,7 +104,11 @@ def build_pgn(board, player_color, player_name, player_elo, maia_name, maia_elo,
     game.headers["WhiteElo"] = str(player_elo if player_color == chess.WHITE else maia_elo)
     game.headers["BlackElo"] = str(maia_elo if player_color == chess.WHITE else player_elo)
     game.headers["Result"] = result
-    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+    if move_times is not None:
+        for node, elapsed in zip(game.mainline(), move_times):
+            if elapsed is not None:
+                node.comment = f"[%emt {format_elapsed_time(elapsed)}]"
+    exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
     return game.accept(exporter)
 
 
@@ -119,6 +140,7 @@ class GameSession:
     ):
         self.engine = engine
         self.board = board if board is not None else chess.Board()
+        self.move_times = [None] * len(self.board.move_stack)
         self.player_color = player_color
         self.player_name = player_name
         self.player_elo = player_elo
@@ -251,6 +273,7 @@ class GameSession:
                     )
                 self._think_skip.clear()
                 self.board = chess.Board()
+                self.move_times.clear()
                 self.history.clear()
                 self.player_color = chess.WHITE
                 self.started = False
@@ -426,6 +449,8 @@ class GameSession:
                 self.board.pop()
                 if self.history:
                     self.history.pop()
+            if removed:
+                del self.move_times[-removed:]
             return removed
 
     def undo_last_turn(self):
@@ -446,4 +471,5 @@ class GameSession:
             self.maia_name,
             self.maia_elo,
             result,
+            self.move_times,
         )

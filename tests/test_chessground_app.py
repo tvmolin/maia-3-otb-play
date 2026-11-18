@@ -491,6 +491,34 @@ class ChessgroundAppTests(unittest.TestCase):
         )
         self.assertEqual(response.json["state"]["clock"]["running_color"], "white")
 
+    def test_completed_pgn_includes_elapsed_time_for_each_move(self):
+        now = [100.0]
+
+        def think_for_three_seconds(_session, _seconds):
+            now[0] += 3
+
+        with (
+            patch("chessground_app.time.monotonic", side_effect=lambda: now[0]),
+            patch.object(GameSession, "wait_for_maia_think", think_for_three_seconds),
+            patch(
+                "maia_game.save_pgn",
+                return_value=Path("timed-game.pgn"),
+            ) as save_pgn,
+        ):
+            self.client.post("/api/find-match", json={"time_control": "5+5"})
+            now[0] = 102
+            self.client.post(
+                "/api/move",
+                json={"move": "e2e4", "expected_ply": 0},
+            )
+            now[0] = 104
+            response = self.client.post("/api/command", json={"command": "resign"})
+
+        self.assertEqual(response.status_code, 200)
+        pgn = save_pgn.call_args.args[0]
+        self.assertIn("e4 { [%emt 0:00:02.00] }", pgn)
+        self.assertIn("e5 { [%emt 0:00:03.00] }", pgn)
+
     def test_player_timeout_rejects_move_and_sets_the_result(self):
         now = [0.0]
         with (
@@ -864,6 +892,10 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(undo.status_code, 200)
         self.assertEqual(undo.json["state"]["ply"], 0)
         self.assertTrue(undo.json["state"]["can_move"])
+        self.assertEqual(
+            self.client.application.config["CHESS_GAME"].move_times,
+            [],
+        )
 
         with patch.object(GameSession, "save_pgn_file", return_value=Path("game.pgn")) as save_pgn:
             new_game = self.client.post("/api/new-game")

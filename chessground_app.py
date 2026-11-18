@@ -44,6 +44,7 @@ class ChessClock:
         self.remaining = {chess.WHITE: 0.0, chess.BLACK: 0.0}
         self.running_color = None
         self.started_at = None
+        self.turn_started_at = None
 
     def start(self, base_seconds, increment_seconds, color, now):
         self.base_seconds = base_seconds
@@ -51,10 +52,12 @@ class ChessClock:
         self.remaining = {chess.WHITE: float(base_seconds), chess.BLACK: float(base_seconds)}
         self.running_color = color
         self.started_at = now
+        self.turn_started_at = now
 
     def stop(self):
         self.running_color = None
         self.started_at = None
+        self.turn_started_at = None
 
     def settle(self, now):
         if self.running_color is None:
@@ -71,9 +74,12 @@ class ChessClock:
     def complete_move(self, mover, next_color, now):
         if self.running_color != mover:
             raise RuntimeError("The chess clock is not running for the player who moved.")
+        elapsed = max(0.0, now - self.turn_started_at)
         self.remaining[mover] += self.increment_seconds
         self.running_color = next_color
         self.started_at = now if next_color is not None else None
+        self.turn_started_at = now if next_color is not None else None
+        return elapsed
 
     def save_turn(self):
         return self.remaining.copy()
@@ -82,6 +88,7 @@ class ChessClock:
         self.remaining = remaining.copy()
         self.running_color = color
         self.started_at = now
+        self.turn_started_at = now
 
     def data(self, now):
         remaining = self.remaining.copy()
@@ -351,7 +358,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
             return None
         san = game.play_maia_move(turn)
         next_color = None if game.is_game_over else game.player_color
-        clock.complete_move(not game.player_color, next_color, now)
+        game.move_times.append(clock.complete_move(not game.player_color, next_color, now))
         return san
 
     @app.get("/")
@@ -684,11 +691,11 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 game.apply_player_move(move_text)
             except ValueError as error:
                 return state_response(400, str(error))
-            clock.complete_move(
+            game.move_times.append(clock.complete_move(
                 game.player_color,
                 None if game.is_game_over else not game.player_color,
                 now,
-            )
+            ))
             clock_history.append(clock_checkpoint)
             try:
                 if not game.is_game_over:

@@ -207,7 +207,9 @@ Maia is thinking. Maia uses the same uncertainty-based think time and shared
 game logic as the terminal version. The web game runs independently from any
 terminal game. Its PGN is written to the `games` folder when the game ends,
 including by resignation; stopping the server during an unfinished game does
-not save it. Use **Copy PGN** to copy the game notation.
+not save it. PGNs for newly played web games include each move's elapsed time
+as a standard `[%emt ...]` annotation. Use **Copy PGN** to copy the game
+notation.
 If the browser blocks clipboard access over local HTTP, the PGN is displayed
 selected so you can copy it manually.
 Use **New Game** to discard an unfinished game and choose a side again without

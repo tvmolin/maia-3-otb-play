@@ -82,7 +82,7 @@ class Server:
             lichess_importer=importer,
         )
         if options.get("legacy_match"):
-            self.app.config["CHESSGROUND_LADDER"].record_match({
+            match = self.app.config["CHESSGROUND_LADDER"].record_match({
                 "match_id": "legacy-match",
                 "finished_at": "2026-01-01T12:00:00Z",
                 "result": "1-0",
@@ -93,6 +93,8 @@ class Server:
                 "pgn_file": f"legacy-{self.generation}.pgn",
                 "pgn": "1. e4 e5 1-0",
             })
+            if options.get("legacy_without_color"):
+                del match["player_color"]
 
     def __call__(self, environ, start_response):
         if environ["PATH_INFO"] == "/__e2e__/reset" and environ["REQUEST_METHOD"] == "POST":

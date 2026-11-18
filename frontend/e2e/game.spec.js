@@ -174,6 +174,22 @@ test.describe('board appearance', () => {
 });
 
 test.describe('starting a match', () => {
+  test('offers the supported matchmaking settings', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Find match' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Resign' })).toBeHidden();
+    await expect(page.getByRole('textbox', { name: 'Piece color' })).toHaveValue('Random');
+    for (const control of ['3+2', '5+5', '15+10', '20+10']) {
+      await chooseOption(page, 'Time control', control);
+      await expect(page.getByRole('textbox', { name: 'Time control' })).toHaveValue(control);
+    }
+    for (const color of ['White', 'Black', 'Random']) {
+      await chooseOption(page, 'Piece color', color);
+      await expect(page.getByRole('textbox', { name: 'Piece color' })).toHaveValue(color);
+    }
+  });
+
   test('plays moves as white against Maia and shows the game panels', async ({ page, request }) => {
     await resetServer(request, { engine_moves: ['e5', 'Nc6'] });
     await page.goto('/');
@@ -235,6 +251,35 @@ test.describe('starting a match', () => {
     await expectPieceAt(page, 'e4', 'P');
     await expectPieceAt(page, 'e2', null);
     await expect.poll(() => sounds.some((url) => url.endsWith('/Move.mp3'))).toBeTruthy();
+  });
+
+  test('keeps board and clock responsive until a move request completes', async ({ page, request }) => {
+    await startScenario(page, request, { engine_moves: ['e5'] });
+    let releaseMove;
+    const gate = new Promise((resolve) => { releaseMove = resolve; });
+    await page.route('**/api/move', async (route) => {
+      await gate;
+      await route.continue();
+    }, { times: 1 });
+    const moveRequest = page.waitForRequest('**/api/move');
+
+    try {
+      await movePiece(page, 'e2', 'e4');
+      await moveRequest;
+      await expectPieceAt(page, 'e4', 'P');
+      await expectPieceAt(page, 'e2', null);
+      await expect(page.getByLabel('Black clock')).toHaveClass(/active/);
+      await expect(page.getByLabel('White clock')).not.toHaveClass(/active/);
+      await expect(status(page)).toContainText('thinking');
+    } finally {
+      releaseMove();
+    }
+
+    await expect(moveButton(page, '1. e4')).toBeVisible();
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await expectPieceAt(page, 'e5', 'p');
+    await expect(page.getByLabel('White clock')).toHaveClass(/active/);
+    await expect(status(page)).toContainText('Your move.');
   });
 
   for (const color of ['white', 'black']) {
@@ -334,6 +379,29 @@ test.describe('moves and board feedback', () => {
     await expect(page.getByLabel('1 point material advantage')).toBeVisible();
   });
 
+  test('shows en passant captures correctly when reviewing positions', async ({ page, request }) => {
+    await startScenario(page, request, {
+      fen: '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1',
+      engine_moves: ['Kf7'],
+    });
+
+    await movePiece(page, 'e5', 'd6');
+    await expect(moveButton(page, '1. exd6')).toBeVisible();
+    await expect(moveButton(page, '1... Kf7')).toBeVisible();
+    await expectPieceAt(page, 'd6', 'P');
+    await expectPieceAt(page, 'd5', null);
+    await expect(page.getByLabel('Captured: 1 pawn')).toHaveCount(1);
+    await expect(page.getByLabel('1 point material advantage')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Go to starting position' }).click();
+    await expectPieceAt(page, 'e5', 'P');
+    await expectPieceAt(page, 'd5', 'p');
+    await expect(page.getByLabel('No pieces captured')).toHaveCount(2);
+    await page.getByRole('button', { name: 'Return to current position' }).click();
+    await expectPieceAt(page, 'd6', 'P');
+    await expect(page.getByLabel('Captured: 1 pawn')).toHaveCount(1);
+  });
+
   test('moves can be undone', async ({ page, request }) => {
     await startScenario(page, request, { engine_moves: ['e5'] });
     await movePiece(page, 'e2', 'e4');
@@ -363,6 +431,27 @@ test.describe('moves and board feedback', () => {
     await expect(status(page)).toContainText('Your move.');
     await expect(page.getByLabel('White clock')).toHaveClass(/active/);
     await expect(page.getByLabel('Black clock')).not.toHaveClass(/active/);
+  });
+
+  test('restores a rejected move and allows a retry', async ({ page, request }) => {
+    await startScenario(page, request, { engine_moves: ['e5'] });
+    const initialState = await (await request.get('/api/state')).json();
+    await page.route('**/api/move', (route) => route.fulfill({
+      status: 409,
+      json: { error: 'The position changed.', state: initialState },
+    }), { times: 1 });
+
+    await movePiece(page, 'e2', 'e4');
+    await expectPieceAt(page, 'e2', 'P');
+    await expectPieceAt(page, 'e4', null);
+    await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(0);
+    await expect(page.getByLabel('White clock')).toHaveClass(/active/);
+    await expect(status(page)).toContainText('Your move.');
+
+    await movePiece(page, 'e2', 'e4');
+    await expect(moveButton(page, '1. e4')).toBeVisible();
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Review move/ })).toHaveCount(2);
   });
 });
 
@@ -457,6 +546,17 @@ test.describe('ending a game', () => {
 });
 
 test.describe('profile', () => {
+  test('renders legacy matches without a player color', async ({ page, request }) => {
+    await resetServer(request, { legacy_match: true, legacy_without_color: true });
+    await page.goto('/profile');
+
+    const match = page.locator('table:not(.color-stats) tbody tr');
+    await expect(match).toContainText('Unknown');
+    await expect(match.getByRole('button', { name: 'Copy PGN' })).toBeVisible();
+    await expect(page.locator('.color-stats tbody tr').first()).toContainText('0-0-0');
+    await expect(page.locator('.color-stats tbody tr').last()).toContainText('0-0-0');
+  });
+
   test('provides a visible way back to the game', async ({ page, request }) => {
     await resetServer(request);
     await page.goto('/profile');

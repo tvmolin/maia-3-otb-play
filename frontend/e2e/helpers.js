@@ -19,9 +19,10 @@ export async function chooseOption(page, label, value) {
   }
   if (await control.inputValue() === value) return;
   await control.click();
+  const escapedValue = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const option = page
     .locator('[data-combobox-option]:visible')
-    .filter({ hasText: new RegExp(`^${value}$`, 'i') })
+    .filter({ hasText: new RegExp(`^${escapedValue}$`, 'i') })
     .first();
   await option.click();
 }

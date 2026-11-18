@@ -63,48 +63,17 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertFalse(response.json["can_move"])
         self.assertEqual(response.json["destinations"], {})
 
-    def test_matchmaking_form_only_exposes_time_control_and_find_match(self):
+    def profile_data(self, response):
+        body = response.get_data(as_text=True)
+        bootstrap = body.split("window.__PROFILE_DATA__ = ", 1)[1]
+        return json.JSONDecoder().raw_decode(bootstrap)[0]
+
+    def test_game_page_loads_react_entrypoint(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Find match", response.data)
-        self.assertIn(b'id="time-control"', response.data)
-        self.assertIn(b'id="player-color"', response.data)
-        self.assertIn(b'<option value="random" selected>Random</option>', response.data)
-        self.assertIn(b'<option value="white">White</option>', response.data)
-        self.assertIn(b'<option value="black">Black</option>', response.data)
-        self.assertIn(b'<optgroup label="Blitz">', response.data)
-        self.assertIn(b'<optgroup label="Rapid">', response.data)
-        for control in (b"3+2", b"5+5", b"15+10", b"20+10"):
-            self.assertIn(control, response.data)
-        self.assertNotIn(b"Custom", response.data)
-        self.assertNotIn(b'id="maia-elo"', response.data)
-        self.assertNotIn(b'id="player-elo"', response.data)
-        self.assertIn(b'id="opponent-display"', response.data)
-        self.assertIn(b'id="player-display"', response.data)
-        self.assertIn(b'id="opponent-material-advantage"', response.data)
-        self.assertIn(b'id="player-material-advantage"', response.data)
-        self.assertIn(b'id="play-instantly"', response.data)
-        self.assertGreater(
-            response.data.index(b'id="play-instantly"'),
-            response.data.index(b'id="actions-panel"'),
-        )
-        self.assertIn(b'id="result-summary"', response.data)
-        self.assertIn(b'id="result-title"', response.data)
-        self.assertIn(b'id="result-rating"', response.data)
-        self.assertIn(b'id="clocks-panel"', response.data)
-        self.assertIn(b'id="actions-panel" class="panel" hidden', response.data)
-        self.assertIn(b'id="moves-panel" class="panel" hidden', response.data)
-        self.assertIn(b'id="move-previous"', response.data)
-        self.assertIn(b'id="move-next"', response.data)
-        self.assertIn(b'id="copy-pgn"', response.data)
-        self.assertIn(b">Copy PGN</button>", response.data)
-        self.assertIn(b'id="pgn-fallback"', response.data)
-        self.assertNotIn(b"Download PGN", response.data)
-        self.assertLess(
-            response.data.index(b'<ol id="move-history"'),
-            response.data.index(b'id="copy-pgn"'),
-        )
+        self.assertIn(b'id="root"', response.data)
+        self.assertIn(b"assets/app.js", response.data)
 
     def test_available_clocks_are_grouped_into_blitz_and_rapid(self):
         self.assertEqual(
@@ -115,21 +84,19 @@ class ChessgroundAppTests(unittest.TestCase):
             },
         )
 
-    def test_profile_shows_empty_rating_chart_and_match_history(self):
+    def test_profile_bootstraps_empty_rating_chart_and_match_history(self):
         response = self.client.get("/profile")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Player profile", response.data)
-        self.assertIn(b"Blitz rating progress", response.data)
-        self.assertIn(b"Blitz rating", response.data)
-        self.assertIn(b"Blitz", response.data)
-        self.assertIn(b"Rapid", response.data)
-        self.assertIn(b">800</strong>", response.data)
-        self.assertIn(b"No matches yet", response.data)
-        self.assertIn(b"Back to game", response.data)
         self.assertIn(b"assets/profile.js", response.data)
+        data = self.profile_data(response)
+        self.assertEqual(data["category"], "blitz")
+        self.assertEqual(data["playerElo"], 800)
+        self.assertEqual(data["matches"], [])
+        self.assertEqual([point["rating"] for point in data["ratingPoints"]], [800])
 
-    def test_profile_shows_rating_progress_and_newest_match_first(self):
+    def test_profile_bootstraps_rating_progress_and_newest_match_first(self):
         ladder = self.client.application.config["CHESSGROUND_LADDER"]
         ladder.record_match(
             {
@@ -180,33 +147,29 @@ class ChessgroundAppTests(unittest.TestCase):
         response = self.client.get("/profile")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"class=\"rating-chart-line\"", response.data)
-        self.assertIn(b"TacticalLlama4821 (900)", response.data)
-        self.assertIn(b'data-pgn="1. e4 e5 1-0"', response.data)
-        self.assertIn(b'data-local-time datetime="2026-11-04T12:00:00Z"', response.data)
-        self.assertIn(b"Maia (800)", response.data)
-        self.assertIn(b"Piece color", response.data)
-        self.assertIn(b"Results by piece color", response.data)
-        self.assertIn(b"<th scope=\"row\">White</th>", response.data)
-        self.assertIn(b"<th scope=\"row\">Black</th>", response.data)
-        self.assertIn(b"1-1-0", response.data)
-        self.assertIn(b"0-0-1", response.data)
-        self.assertIn(b"50.0%", response.data)
-        self.assertIn(b"75.0%", response.data)
-        self.assertIn(b"0.0%", response.data)
-        self.assertIn(b"5+5", response.data)
-        self.assertIn(b'class="copy-match-pgn" data-pgn="', response.data)
-        self.assertIn(b">Copy PGN</button>", response.data)
-        self.assertIn(b'aria-label="PGN to copy manually"', response.data)
-        self.assertLess(
-            response.data.index(b"TacticalLlama4821 (900)"),
-            response.data.index(b"Maia (800)"),
-        )
+        data = self.profile_data(response)
+        self.assertEqual([match["match_id"] for match in data["matches"]], [
+            "draw", "newer", "older",
+        ])
+        newer = data["matches"][1]
+        self.assertEqual(newer["opponent_name"], "TacticalLlama4821")
+        self.assertEqual(newer["maia_elo"], 900)
+        self.assertEqual(newer["pgn"], "1. e4 e5 1-0")
+        self.assertEqual(newer["finished_at"], "2026-11-04T12:00:00Z")
+        self.assertEqual([point["rating"] for point in data["ratingPoints"]], [
+            800, 820, 805, 805,
+        ])
+        white = data["colorStats"]["white"]
+        black = data["colorStats"]["black"]
+        self.assertEqual((white["wins"], white["draws"], white["losses"]), (1, 1, 0))
+        self.assertEqual((white["win_percentage"], white["score_percentage"]), (50, 75))
+        self.assertEqual((black["wins"], black["draws"], black["losses"]), (0, 0, 1))
+        self.assertEqual((black["win_percentage"], black["score_percentage"]), (0, 0))
         rapid_response = self.client.get("/profile?category=rapid")
         self.assertEqual(rapid_response.status_code, 200)
-        self.assertIn(b"Rapid rating progress", rapid_response.data)
-        self.assertIn(b"No matches yet", rapid_response.data)
-        self.assertNotIn(b"TacticalLlama4821", rapid_response.data)
+        rapid_data = self.profile_data(rapid_response)
+        self.assertEqual(rapid_data["category"], "rapid")
+        self.assertEqual(rapid_data["matches"], [])
 
     def test_profile_reads_legacy_matches_without_piece_color(self):
         ladder = self.client.application.config["CHESSGROUND_LADDER"]
@@ -243,9 +206,11 @@ class ChessgroundAppTests(unittest.TestCase):
         response = legacy_client.get("/profile")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b">Unknown</td>", response.data)
-        self.assertIn(b"0-0-0", response.data)
-        self.assertIn(b'data-pgn="[Event &#34;Legacy match&#34;]', response.data)
+        data = self.profile_data(response)
+        self.assertNotIn("player_color", data["matches"][0])
+        self.assertEqual(data["matches"][0]["pgn"], '[Event "Legacy match"]\n\n1. e4 e5 1-0')
+        self.assertEqual(data["colorStats"]["white"]["games"], 0)
+        self.assertEqual(data["colorStats"]["black"]["games"], 0)
         self.assertEqual(self.player_data_path.read_bytes(), original_save)
 
     def test_start_exposes_legal_destinations(self):

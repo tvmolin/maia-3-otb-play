@@ -1,5 +1,3 @@
-- Generate puzzles from my blunders automatically
 
 - Check sound
 - Better rating graph
-

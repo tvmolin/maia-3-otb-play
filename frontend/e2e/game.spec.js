@@ -457,6 +457,14 @@ test.describe('ending a game', () => {
 });
 
 test.describe('profile', () => {
+  test('provides a visible way back to the game', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/profile');
+
+    await expect(page.getByRole('link', { name: 'Back to game' }))
+      .toBeVisible();
+  });
+
   test('imports an older match from the profile', async ({ page, request }) => {
     await resetServer(request, { lichess: true, legacy_match: true, lichess_delay: 1.5 });
     await page.goto('/profile');

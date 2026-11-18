@@ -70,7 +70,18 @@ body:has(.app-container) main {
 }
 
 .page-header {
-  display: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-header .header-link {
+  width: auto;
+  height: auto;
+  padding: 9px 13px;
+  font-size: inherit;
 }
 
 .brand-lockup {

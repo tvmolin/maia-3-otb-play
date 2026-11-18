@@ -1,3 +1,2 @@
 
-- Check sound
 - Better rating graph

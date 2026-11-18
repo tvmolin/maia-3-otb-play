@@ -111,7 +111,7 @@ def create_app(engine, board=None):
                         "Maia is thinking; wait for her move or use 'go' first."
                     )
                 saved_pgn = None
-                if game.started:
+                if game.started and game.is_game_over:
                     saved_pgn = game.save_pgn_file()
                 game.reset()
         except ValueError as error:
@@ -196,15 +196,7 @@ def main():
         print("Open http://<PC-IP>:5000 on a device on the same Wi-Fi network.")
         app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
     finally:
-        try:
-            engine.quit()
-        finally:
-            if app is not None:
-                game = app.config["CHESS_GAME"]
-                if game.started and game.saved_pgn_path is None:
-                    pgn_path = game.save_pgn_file()
-                    print(f"\nSaved PGN to: {pgn_path}")
-                    print("\nGame PGN:\n" + pgn_path.read_text(encoding="utf-8"))
+        engine.quit()
 
 
 if __name__ == "__main__":

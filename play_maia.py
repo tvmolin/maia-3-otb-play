@@ -10,7 +10,6 @@ from maia_game import (
     GameSession,
     create_engine,
     format_move_list,
-    save_pgn,
 )
 
 try:
@@ -176,13 +175,13 @@ def main():
             try:
                 session.engine.quit()
             finally:
-                pgn_result = (
-                    final_result or session.result
-                )
-                pgn_text = session.build_pgn(pgn_result)
-                pgn_path = save_pgn(pgn_text)
-                print(f"\nSaved PGN to: {pgn_path}")
-                print("\nGame PGN:\n" + pgn_text)
+                if session.is_game_over:
+                    pgn_path = session.save_pgn_file()
+                    print(f"\nSaved PGN to: {pgn_path}")
+                    print(
+                        "\nGame PGN:\n"
+                        + pgn_path.read_text(encoding="utf-8").rstrip()
+                    )
 
 
 if __name__ == "__main__":

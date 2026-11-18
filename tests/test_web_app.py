@@ -201,7 +201,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(quit_response.json["action"], "quit")
         self.assertTrue(quit_response.json["quit"])
 
-    def test_new_game_saves_previous_game_and_resets_to_color_picker(self):
+    def test_new_game_discards_unfinished_game_and_resets_to_color_picker(self):
         with patch.object(GameSession, "wait_for_maia_think"):
             self.app.post("/api/command", json={"text": "e4"})
 
@@ -211,9 +211,17 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json["started"])
         self.assertEqual(response.json["history"], [])
-        self.assertEqual(response.json["saved_pgn"], "maia-game-test.pgn")
+        self.assertIsNone(response.json["saved_pgn"])
         self.assertEqual(len(self.app.application.config["CHESS_GAME"].board.move_stack), 0)
-        save_pgn.assert_called_once()
+        save_pgn.assert_not_called()
+
+    def test_in_progress_game_cannot_be_saved_as_a_pgn(self):
+        game = self.app.application.config["CHESS_GAME"]
+        with patch("maia_game.save_pgn") as save_pgn:
+            with self.assertRaisesRegex(ValueError, "Only completed games"):
+                game.save_pgn_file()
+
+        save_pgn.assert_not_called()
 
     def test_completed_game_is_saved_immediately_and_only_once(self):
         client = create_app(

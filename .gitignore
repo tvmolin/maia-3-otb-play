@@ -132,6 +132,12 @@ cache/
 !docs/*.png  # Allow documentation images
 !frontend/board-texture.svg
 !frontend/pieces/tatiana/*.svg
+!frontend/pieces/fantasy/*.svg
+!frontend/pieces/spatial/*.svg
+!frontend/pieces/celtic/*.svg
+!frontend/pieces/maestro/*.svg
+!frontend/boards/*.jpg
+!frontend/boards/mosaic.png
 
 CLAUDE.md
 

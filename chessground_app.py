@@ -666,7 +666,11 @@ def create_app(engine, board=None, player_data_path=None):
             try:
                 if game.is_thinking:
                     raise ValueError("Maia is thinking; wait for her move to finish.")
-                saved_pgn = game.save_pgn_file() if game.started else None
+                saved_pgn = (
+                    game.save_pgn_file()
+                    if game.started and game.is_game_over
+                    else None
+                )
                 game.reset()
                 clock.stop()
                 clock_history.clear()
@@ -709,13 +713,7 @@ def main():
     try:
         app.run(host=HOST, port=PORT, debug=False, use_reloader=False)
     finally:
-        try:
-            engine.quit()
-        finally:
-            game = app.config["CHESS_GAME"]
-            if game.started and game.saved_pgn_path is None:
-                path = game.save_pgn_file()
-                print(f"Saved unfinished game to {path}", flush=True)
+        engine.quit()
 
 
 if __name__ == "__main__":

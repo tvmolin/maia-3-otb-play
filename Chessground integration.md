@@ -106,8 +106,7 @@ legal destinations. That is preferable for this single-player app because
   new game, and PGN. Do not fork the UCI/model handling.
 - Bind to loopback (`127.0.0.1`) by default and open the local URL in the
   desktop browser. Do not expose a development server to the network.
-- Ensure shutdown quits the engine cleanly and saves an unfinished PGN using
-  the same policy as the existing app.
+- Ensure shutdown quits the engine cleanly without saving an unfinished game.
 
 ### 3. Define a board-oriented API contract
 

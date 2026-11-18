@@ -108,6 +108,27 @@ Start the game from the repository root:
 .\.venv\Scripts\python.exe .\play_maia.py
 ```
 
+After you enter the Elo ratings and color, the script loads Maia before asking
+for your first move. Startup may take a little while.
+
+In the Chessground browser interface, use the cog to choose a board and piece
+set. Changes apply immediately and are saved in the current browser.
+The Mosaic board repeats the supplied textured checkerboard image.
+
+The Wood, Marble and Blue marble board images are from the
+[Lichess board collection](https://github.com/lichess-org/lila/tree/master/public/images/board),
+by the Lichess authors and pirouetti, under AGPL-3.0-or-later. The Fantasy,
+Spatial and Celtic pieces are by Maurizio Monge, from
+[Lichess](https://github.com/lichess-org/lila/tree/master/public/piece) and
+[chess-art](https://github.com/maurimo/chess-art), under the
+[MIT license](frontend/public/licenses/chess-art.txt). Lichess documents these
+licenses in its [copying notes](https://github.com/lichess-org/lila/blob/master/COPYING.md).
+The unmodified [Maestro pieces](https://github.com/lichess-org/lila/tree/master/public/piece/maestro)
+are by sadsnake1 and licensed under
+[CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/),
+which permits noncommercial use and requires attribution and share-alike for
+adaptations.
+
 ### Run the Chessground browser tests
 
 The Chessground frontend has deterministic Playwright tests that use a fake
@@ -122,15 +143,13 @@ npx playwright install chromium
 npx playwright test
 ```
 
-After you enter the Elo ratings and color, the script loads Maia before asking
-for your first move. Startup may take a little while.
-
 Enter your Maia Elo, your Elo, and the color you want to play. Enter moves in
 standard algebraic notation (such as `e4`) or UCI notation (such as `e2e4`).
 Type `help` at any prompt to see the available commands: `undo` takes back a
 turn, `resign` (or `concede`) resigns, and `q` (or `quit`/`exit`) quits. While
 Maia is thinking, `go` skips the remaining delay and makes her play immediately.
-The game is saved as a PGN file in the `games` folder when it ends or you quit.
+Completed games are saved as PGN files in the `games` folder. Quitting or
+interrupting an unfinished game does not save it.
 A system notification sound plays after Maia makes a move on Windows.
 
 ## Play from a Phone on Local Wi-Fi
@@ -186,16 +205,16 @@ terminal commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and
 `go` (during Maia's think delay). Help and Go controls remain available while
 Maia is thinking. Maia uses the same uncertainty-based think time and shared
 game logic as the terminal version. The web game runs independently from any
-terminal game. Its PGN is written to the `games` folder as soon as the game
-ends or you resign; an unfinished game is saved when you stop the server with
-Ctrl+C. Use **Copy PGN** to copy the game notation.
+terminal game. Its PGN is written to the `games` folder when the game ends,
+including by resignation; stopping the server during an unfinished game does
+not save it. Use **Copy PGN** to copy the game notation.
 If the browser blocks clipboard access over local HTTP, the PGN is displayed
 selected so you can copy it manually.
-Use **New Game** to save an unfinished game and choose a side again without
+Use **New Game** to discard an unfinished game and choose a side again without
 restarting the server or reloading the engine. Start a new game after Maia has
 finished her current turn (or use `go` to skip the remaining think delay).
 
-The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"player_elo":760}` (use `"black"` to play Black), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. `POST /api/new-game` saves the current PGN and returns to side/rating selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
+The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"player_elo":760}` (use `"black"` to play Black), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. `POST /api/new-game` saves a completed game (if not already saved), discards an unfinished one, and returns to side/rating selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
 
 ## Play Maia on a Chessground Board
 

@@ -1,7 +1,5 @@
 - Generate puzzles from my blunders automatically
-- More piece sets and boards (textured boards)
 
 - Check sound
-- UI overhaul, maybe use mantine or something
 - Better rating graph
 

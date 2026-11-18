@@ -258,6 +258,8 @@ class GameSession:
 
     def save_pgn_file(self):
         with self.lock:
+            if not self.started or not self.is_game_over:
+                raise ValueError("Only completed games can be saved as PGNs.")
             if self.saved_pgn_path is None:
                 self.saved_pgn_text = self.build_pgn(self.result)
                 self.saved_pgn_path = save_pgn(self.saved_pgn_text)

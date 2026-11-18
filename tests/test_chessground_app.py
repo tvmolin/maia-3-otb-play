@@ -865,12 +865,14 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(undo.json["state"]["ply"], 0)
         self.assertTrue(undo.json["state"]["can_move"])
 
-        with patch.object(GameSession, "save_pgn_file", return_value=Path("game.pgn")):
+        with patch.object(GameSession, "save_pgn_file", return_value=Path("game.pgn")) as save_pgn:
             new_game = self.client.post("/api/new-game")
 
         self.assertEqual(new_game.status_code, 200)
         self.assertFalse(new_game.json["state"]["started"])
         self.assertEqual(new_game.json["state"]["ply"], 0)
+        self.assertIsNone(new_game.json["saved_pgn"])
+        save_pgn.assert_not_called()
 
     def test_missing_expected_ply_is_rejected(self):
         self.client.post("/api/start", json={"color": "white"})

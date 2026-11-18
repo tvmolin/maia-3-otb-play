@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import {
   expectPieceAt,
+  chooseOption,
   findMatch,
   movePiece,
   moveButton,
@@ -10,6 +12,166 @@ import {
 } from './helpers.js';
 
 const status = (page) => page.getByRole('status');
+
+test.describe('board appearance', () => {
+  test('changes every board and piece set, persists choices, and keeps the game playable', async ({ page, request }) => {
+    await startScenario(page, request, { engine_moves: ['e5'] });
+    const board = page.locator('cg-board');
+    const image = (locator) => locator.evaluate((element) => getComputedStyle(element).backgroundImage);
+    const defaultBoard = await image(board);
+    const defaultPiece = await image(page.locator('piece.white.knight').first());
+
+    await page.getByRole('button', { name: 'Board settings' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Board settings' });
+    for (const name of ['Wood', 'Marble', 'Blue marble', 'Green', 'Blue', 'Brown']) {
+      await chooseOption(page, 'Board', name);
+      expect(await image(board)).not.toBe(defaultBoard);
+    }
+    for (const name of ['Fantasy', 'Spatial', 'Celtic', 'Maestro']) {
+      await chooseOption(page, 'Piece set', name);
+      expect(await image(page.locator('piece.white.knight').first())).not.toBe(defaultPiece);
+      const loaded = await page.locator('.cg-wrap').evaluate(async (wrap) => {
+        const style = getComputedStyle(wrap);
+        const urls = ['white', 'black'].flatMap((color) =>
+          ['pawn', 'knight', 'bishop', 'rook', 'queen', 'king'].map((role) =>
+            style.getPropertyValue(`--piece-${color}-${role}`).trim().slice(5, -2)));
+        return Promise.all(urls.map(async (url) => {
+          const response = await fetch(url);
+          return response.ok ? response.text() : '';
+        }));
+      });
+      expect(loaded.every((svg) => svg.includes('<svg'))).toBe(true);
+      if (name === 'Maestro') {
+        const originals = await Promise.all(['w', 'b'].flatMap((color) =>
+          ['P', 'N', 'B', 'R', 'Q', 'K'].map((role) =>
+            readFile(new URL(`../pieces/maestro/${color}${role}.svg`, import.meta.url), 'utf8'))));
+        const matches = await page.evaluate(async ({ actual, expected }) => {
+          const render = async (svg) => {
+            const image = new Image();
+            image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+            await image.decode();
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 100;
+            const context = canvas.getContext('2d');
+            context.drawImage(image, 0, 0, 100, 100);
+            return context.getImageData(0, 0, 100, 100).data;
+          };
+          return Promise.all(actual.map(async (svg, index) => {
+            const rendered = await render(svg);
+            const original = await render(expected[index]);
+            return rendered.every((value, pixel) => value === original[pixel]);
+          }));
+        }, { actual: loaded, expected: originals });
+        expect(matches).toEqual(Array(12).fill(true));
+      }
+    }
+    await chooseOption(page, 'Board', 'Wood');
+    const selectedBoard = await image(board);
+    const selectedPiece = await image(page.locator('piece.white.knight').first());
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await movePiece(page, 'e2', 'e4');
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await page.reload();
+    await expectPieceAt(page, 'e4', 'P');
+    expect(await image(board)).toBe(selectedBoard);
+    expect(await image(page.locator('piece.white.knight').first())).toBe(selectedPiece);
+    await page.getByRole('button', { name: 'Board settings' }).click();
+    await expect(page.getByRole('textbox', { name: 'Board', exact: true })).toHaveValue('Wood');
+    await expect(page.getByRole('textbox', { name: 'Piece set' })).toHaveValue('Maestro');
+    await expect(dialog.getByText('Maestro by sadsnake1', { exact: false })).toBeVisible();
+  });
+
+  test('falls back to the defaults for invalid saved choices', async ({ page, request }) => {
+    await resetServer(request);
+    await page.addInitScript(() => {
+      localStorage.setItem('chessground-appearance', JSON.stringify({ board: 'invalid', pieces: 'invalid' }));
+    });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Board settings' }).click();
+    await expect(page.getByRole('textbox', { name: 'Board', exact: true })).toHaveValue('Classic');
+    await expect(page.getByRole('textbox', { name: 'Piece set' })).toHaveValue('Tatiana');
+  });
+
+  test('keeps board settings accessible on a narrow screen', async ({ page, request }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await resetServer(request);
+    await page.goto('/');
+    const settings = page.getByRole('button', { name: 'Board settings' });
+    const box = await settings.boundingBox();
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
+    await settings.click();
+    await chooseOption(page, 'Board', 'Green');
+    await expect(page.locator('cg-board')).toHaveCSS('background-size', '25% 25%');
+  });
+
+  test('tiles the mosaic texture across the board and restores it after reload', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Board settings' }).click();
+    await chooseOption(page, 'Board', 'Mosaic');
+    await page.keyboard.press('Escape');
+    await page.reload();
+    const board = page.locator('cg-board');
+    await expect(board).toHaveCSS('background-size', '25% 25%');
+    await page.addStyleTag({ content: 'cg-board piece, cg-board square, .cg-wrap coords { visibility: hidden !important; }' });
+    const screenshot = await board.screenshot();
+    const brightness = await page.evaluate(async (data) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${data}`;
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      return Array.from({ length: 64 }, (_, index) => {
+        const x = Math.floor(((index % 8) + 0.5) * image.width / 8);
+        const y = Math.floor((Math.floor(index / 8) + 0.5) * image.height / 8);
+        const pixel = context.getImageData(x, y, 1, 1).data;
+        return (pixel[0] + pixel[1] + pixel[2]) / 3;
+      });
+    }, screenshot.toString('base64'));
+    for (const [index, value] of brightness.entries()) {
+      if ((index % 8 + Math.floor(index / 8)) % 2 === 0) expect(value).toBeGreaterThan(130);
+      else expect(value).toBeLessThan(110);
+    }
+    await page.getByRole('button', { name: 'Board settings' }).click();
+    await expect(page.getByRole('textbox', { name: 'Board', exact: true })).toHaveValue('Mosaic');
+    await chooseOption(page, 'Board', 'Wood');
+    await expect(board).toHaveCSS('background-size', '100% 100%');
+  });
+
+  test('solid-color boards have a light square at the bottom right', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/');
+    await page.addStyleTag({ content: 'cg-board piece, cg-board square, .cg-wrap coords { visibility: hidden !important; }' });
+    for (const [name, light, dark] of [
+      ['Green', [238, 238, 210], [118, 150, 86]],
+      ['Blue', [222, 227, 230], [140, 162, 173]],
+      ['Brown', [240, 217, 181], [181, 136, 99]],
+    ]) {
+      await page.getByRole('button', { name: 'Board settings' }).click();
+      await chooseOption(page, 'Board', name);
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('dialog', { name: 'Board settings' })).toBeHidden();
+      const screenshot = await page.locator('cg-board').screenshot();
+      const colors = await page.evaluate(async (data) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${data}`;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext('2d');
+        context.drawImage(image, 0, 0);
+        return [[1, 1], [15, 1], [1, 15], [15, 15]].map(([x, y]) =>
+          Array.from(context.getImageData(Math.floor(x * image.width / 16), Math.floor(y * image.height / 16), 1, 1).data).slice(0, 3));
+      }, screenshot.toString('base64'));
+      expect(colors, name).toEqual([light, dark, dark, light]);
+    }
+  });
+});
 
 test.describe('starting a match', () => {
   test('plays moves as white against Maia and shows the game panels', async ({ page, request }) => {

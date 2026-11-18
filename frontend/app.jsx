@@ -25,6 +25,7 @@ import {
   IconCopy,
   IconFlag,
   IconRefresh,
+  IconSettings,
 } from '@tabler/icons-react';
 import { Chessground } from '@lichess-org/chessground';
 import '@mantine/core/styles.css';
@@ -32,8 +33,61 @@ import '@lichess-org/chessground/assets/chessground.base.css';
 import '@lichess-org/chessground/assets/chessground.brown.css';
 import '@lichess-org/chessground/assets/chessground.cburnett.css';
 import './style.css';
+import defaultBoard from './board-texture.svg';
+import woodBoard from './boards/wood.jpg';
+import marbleBoard from './boards/marble.jpg';
+import blueMarbleBoard from './boards/blue-marble.jpg';
+import mosaicBoard from './boards/mosaic.png';
 
 const initialFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+const boardThemes = {
+  classic: { label: 'Classic', image: `url("${defaultBoard}")` },
+  wood: { label: 'Wood', image: `url("${woodBoard}")` },
+  marble: { label: 'Marble', image: `url("${marbleBoard}")` },
+  'blue-marble': { label: 'Blue marble', image: `url("${blueMarbleBoard}")` },
+  mosaic: { label: 'Mosaic', image: `url("${mosaicBoard}")`, size: '25% 25%' },
+  green: { label: 'Green', light: '#eeeed2', dark: '#769656' },
+  blue: { label: 'Blue', light: '#dee3e6', dark: '#8ca2ad' },
+  brown: { label: 'Brown', light: '#f0d9b5', dark: '#b58863' },
+};
+const pieceSets = {
+  tatiana: 'Tatiana',
+  fantasy: 'Fantasy',
+  spatial: 'Spatial',
+  celtic: 'Celtic',
+  maestro: 'Maestro',
+};
+const pieceImages = import.meta.glob('./pieces/*/*.svg', { eager: true, query: '?url', import: 'default' });
+const pieceRoles = { pawn: 'P', knight: 'N', bishop: 'B', rook: 'R', queen: 'Q', king: 'K' };
+const appearanceKey = 'chessground-appearance';
+
+function readAppearance() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(appearanceKey) || '{}');
+    return {
+      board: Object.hasOwn(boardThemes, saved?.board) ? saved.board : 'classic',
+      pieces: Object.hasOwn(pieceSets, saved?.pieces) ? saved.pieces : 'tatiana',
+    };
+  } catch (error) {
+    console.warn('Could not read board appearance settings:', error);
+    return { board: 'classic', pieces: 'tatiana' };
+  }
+}
+
+function appearanceStyle(appearance) {
+  const board = boardThemes[appearance.board];
+  const style = board.image ? { '--board-image': board.image, '--board-size': board.size || '100% 100%' } : {
+    '--board-image': `conic-gradient(${board.dark} 25%, ${board.light} 0 50%, ${board.dark} 0 75%, ${board.light} 0)`,
+    '--board-size': '25% 25%',
+  };
+  for (const [color, prefix] of [['white', 'w'], ['black', 'b']]) {
+    for (const [role, letter] of Object.entries(pieceRoles)) {
+      style[`--piece-${color}-${role}`] = `url("${pieceImages[`./pieces/${appearance.pieces}/${prefix}${letter}.svg`]}")`;
+    }
+  }
+  return style;
+}
+
 const materialValues = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 const pieceSymbols = {
   p: '♟',
@@ -268,7 +322,7 @@ function PlayerBar({ state, color, pieces, advantage, label, clock, clockTimes }
   );
 }
 
-function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
+function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, appearance }) {
   const elementRef = useRef(null);
   const groundRef = useRef(null);
   const moveRef = useRef(onMove);
@@ -395,7 +449,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove }) {
 
   return (
     <div className="board-slot">
-      <div ref={elementRef} className="cg-wrap" />
+      <div ref={elementRef} className="cg-wrap" style={appearanceStyle(appearance)} />
     </div>
   );
 }
@@ -504,6 +558,9 @@ function optimisticNewGameState(state) {
 
 function App() {
   const [state, setState] = useState(null);
+  const [appearance, setAppearance] = useState(readAppearance);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [appearanceError, setAppearanceError] = useState('');
   const stateRef = useRef(null);
   const [reviewPly, setReviewPly] = useState(null);
   const [requestPending, setRequestPending] = useState(false);
@@ -514,6 +571,18 @@ function App() {
   const [pendingMove, setPendingMove] = useState(null);
   const requestPendingRef = useRef(false);
   useChessSounds(state);
+
+  const changeAppearance = (field, value) => {
+    const next = { ...appearance, [field]: value };
+    setAppearance(next);
+    try {
+      localStorage.setItem(appearanceKey, JSON.stringify(next));
+      setAppearanceError('');
+    } catch (error) {
+      console.warn('Could not save board appearance settings:', error);
+      setAppearanceError('Appearance changed, but could not be saved in this browser.');
+    }
+  };
 
   const updateState = useCallback((nextState) => {
     stateRef.current = nextState;
@@ -756,6 +825,9 @@ function App() {
             <Anchor className="header-link" href="/profile" title="Profile">
               <IconClock size={16} aria-hidden="true" /> Profile
             </Anchor>
+            <ActionIcon className="header-link" aria-label="Board settings" title="Board settings" onClick={() => setAppearanceOpen(true)}>
+              <IconSettings size={19} aria-hidden="true" />
+            </ActionIcon>
           </aside>
           <div className="game-layout">
           <section className="board-column" aria-label="Chess board">
@@ -768,6 +840,7 @@ function App() {
               requestPending={requestPending}
               pendingMove={pendingMove}
               onMove={onBoardMove}
+              appearance={appearance}
             />
             {state?.started && (
               <PlayerBar state={state} color={playerColorValue} pieces={captured[playerColorValue]} advantage={playerAdvantage} label="YOU" clock={clock} clockTimes={clockTimes} />
@@ -862,6 +935,32 @@ function App() {
             )}
           </aside>
         </div>
+        <Modal opened={appearanceOpen} onClose={() => setAppearanceOpen(false)} title="Board settings" centered>
+          <Stack>
+            <Text size="sm" c="dimmed">Changes are applied to the board immediately and saved in this browser.</Text>
+            {appearanceError && <Text role="alert" size="sm" c="red">{appearanceError}</Text>}
+            <Select
+              label="Board"
+              value={appearance.board}
+              onChange={(value) => changeAppearance('board', value)}
+              data={Object.entries(boardThemes).map(([value, theme]) => ({ value, label: theme.label }))}
+              allowDeselect={false}
+            />
+            <Select
+              label="Piece set"
+              value={appearance.pieces}
+              onChange={(value) => changeAppearance('pieces', value)}
+              data={Object.entries(pieceSets).map(([value, label]) => ({ value, label }))}
+              allowDeselect={false}
+            />
+            {appearance.pieces === 'maestro' && (
+              <Text size="xs" c="dimmed">
+                Maestro by sadsnake1, via <Anchor href="https://github.com/lichess-org/lila/tree/master/public/piece/maestro" target="_blank" rel="noreferrer">Lichess</Anchor>.
+                {' '}<Anchor href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noreferrer">CC BY-NC-SA 4.0</Anchor> (noncommercial).
+              </Text>
+            )}
+          </Stack>
+        </Modal>
         <Modal
           opened={Boolean(promotionMove)}
           onClose={() => {

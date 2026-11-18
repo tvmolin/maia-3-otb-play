@@ -271,8 +271,8 @@ body:has(.app-container) main {
 
 cg-board {
   background-color: #e9e4d5;
-  background-image: url('./board-texture.svg');
-  background-size: 100% 100%;
+  background-image: var(--board-image);
+  background-size: var(--board-size, 100% 100%);
 }
 
 .cg-wrap coords {
@@ -297,18 +297,18 @@ cg-board {
   text-shadow: 0 1px 1px #fff8;
 }
 
-.cg-wrap piece.pawn.white { background-image: url('./pieces/tatiana/wP.svg'); }
-.cg-wrap piece.knight.white { background-image: url('./pieces/tatiana/wN.svg'); }
-.cg-wrap piece.bishop.white { background-image: url('./pieces/tatiana/wB.svg'); }
-.cg-wrap piece.rook.white { background-image: url('./pieces/tatiana/wR.svg'); }
-.cg-wrap piece.queen.white { background-image: url('./pieces/tatiana/wQ.svg'); }
-.cg-wrap piece.king.white { background-image: url('./pieces/tatiana/wK.svg'); }
-.cg-wrap piece.pawn.black { background-image: url('./pieces/tatiana/bP.svg'); }
-.cg-wrap piece.knight.black { background-image: url('./pieces/tatiana/bN.svg'); }
-.cg-wrap piece.bishop.black { background-image: url('./pieces/tatiana/bB.svg'); }
-.cg-wrap piece.rook.black { background-image: url('./pieces/tatiana/bR.svg'); }
-.cg-wrap piece.queen.black { background-image: url('./pieces/tatiana/bQ.svg'); }
-.cg-wrap piece.king.black { background-image: url('./pieces/tatiana/bK.svg'); }
+.cg-wrap piece.pawn.white { background-image: var(--piece-white-pawn); }
+.cg-wrap piece.knight.white { background-image: var(--piece-white-knight); }
+.cg-wrap piece.bishop.white { background-image: var(--piece-white-bishop); }
+.cg-wrap piece.rook.white { background-image: var(--piece-white-rook); }
+.cg-wrap piece.queen.white { background-image: var(--piece-white-queen); }
+.cg-wrap piece.king.white { background-image: var(--piece-white-king); }
+.cg-wrap piece.pawn.black { background-image: var(--piece-black-pawn); }
+.cg-wrap piece.knight.black { background-image: var(--piece-black-knight); }
+.cg-wrap piece.bishop.black { background-image: var(--piece-black-bishop); }
+.cg-wrap piece.rook.black { background-image: var(--piece-black-rook); }
+.cg-wrap piece.queen.black { background-image: var(--piece-black-queen); }
+.cg-wrap piece.king.black { background-image: var(--piece-black-king); }
 
 .sidebar {
   display: grid;

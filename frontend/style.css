@@ -522,6 +522,11 @@ cg-board {
     linear-gradient(145deg, #242f26, #1a221e 70%);
 }
 
+#fen-setup {
+  display: grid;
+  gap: 12px;
+}
+
 .setup-heading {
   margin-bottom: 3px;
 }

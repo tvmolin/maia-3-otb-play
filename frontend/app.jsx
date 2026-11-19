@@ -989,7 +989,12 @@ function App() {
                   allowDeselect={false}
                   disabled={requestPending}
                 />
-                <Button type="submit" fullWidth leftSection={<IconChess size={17} />} loading={requestPending}>
+                <Button
+                  type="submit"
+                  fullWidth
+                  leftSection={<IconChess size={17} />}
+                  loading={requestPending}
+                >
                   Start unrated game
                 </Button>
               </Paper>

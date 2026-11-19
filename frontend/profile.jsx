@@ -1,7 +1,7 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
 import { Anchor, Button, MantineProvider, Paper, Table, Title } from '@mantine/core';
-import { IconArrowLeft, IconCopy } from '@tabler/icons-react';
+import { IconArrowLeft, IconCopy, IconTrash } from '@tabler/icons-react';
 import { createRoot } from 'react-dom/client';
 import '@mantine/core/styles.css';
 import './style.css';
@@ -13,6 +13,7 @@ function Profile() {
   const [refreshError, setRefreshError] = useState('');
   const [matches, setMatches] = useState(data.matches);
   const [submitting, setSubmitting] = useState([]);
+  const [deleting, setDeleting] = useState(null);
   const pendingIds = JSON.stringify(matches
     .filter((match) => ['pending', 'uploading'].includes(match.lichess?.status))
     .map((match) => match.match_id));
@@ -82,6 +83,27 @@ function Profile() {
       setSubmitting((current) => current.filter((id) => id !== matchId));
     }
   };
+  const deleteMatch = async (match) => {
+    const opponent = match.opponent_name || 'Maia';
+    if (!window.confirm(
+      `Delete your game against ${opponent} and recalculate your rating? `
+      + 'This removes it from this profile only; a game already imported to Lichess remains there.',
+    )) return;
+    setDeleting(match.match_id);
+    try {
+      const response = await fetch(
+        `/api/matches/${data.category}/${encodeURIComponent(match.match_id)}`,
+        { method: 'DELETE' },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not delete the game.');
+      window.location.reload();
+    } catch (error) {
+      setStatus(error.message);
+    } finally {
+      setDeleting(null);
+    }
+  };
   const categoryName = data.category[0].toUpperCase() + data.category.slice(1);
   const matchRows = matches.length ? matches.map((match) => (
     <tr key={`${match.finished_at}-${match.pgn_file}`}>
@@ -127,9 +149,22 @@ function Profile() {
           </Button>
         )}
       </td>
+      <td>
+        <Button
+          size="compact-sm"
+          variant="light"
+          color="red"
+          loading={deleting === match.match_id}
+          disabled={deleting !== null}
+          onClick={() => deleteMatch(match)}
+          leftSection={<IconTrash size={14} />}
+        >
+          Delete game
+        </Button>
+      </td>
     </tr>
   )) : (
-    <tr><td className="empty-history" colSpan="9">No matches yet. Play a match to start your history.</td></tr>
+    <tr><td className="empty-history" colSpan="10">No matches yet. Play a match to start your history.</td></tr>
   );
 
   return (
@@ -178,7 +213,7 @@ function Profile() {
             </div>
             <div className="profile-table-wrap">
               <Table className="profile-table">
-                <Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Opponent</Table.Th><Table.Th>Piece color</Table.Th><Table.Th>Result</Table.Th><Table.Th>Time control</Table.Th><Table.Th>Rating change</Table.Th><Table.Th>Rating</Table.Th><Table.Th>PGN</Table.Th><Table.Th>Lichess</Table.Th></Table.Tr></Table.Thead>
+                <Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Opponent</Table.Th><Table.Th>Piece color</Table.Th><Table.Th>Result</Table.Th><Table.Th>Time control</Table.Th><Table.Th>Rating change</Table.Th><Table.Th>Rating</Table.Th><Table.Th>PGN</Table.Th><Table.Th>Lichess</Table.Th><Table.Th>Actions</Table.Th></Table.Tr></Table.Thead>
                 <Table.Tbody>{matchRows}</Table.Tbody>
               </Table>
             </div>

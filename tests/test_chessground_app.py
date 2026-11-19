@@ -223,6 +223,62 @@ class ChessgroundAppTests(unittest.TestCase):
         self.assertEqual(data["colorStats"]["black"]["games"], 0)
         self.assertEqual(self.player_data_path.read_bytes(), original_save)
 
+    def test_delete_match_recalculates_rating_and_removes_local_game_files(self):
+        ladder = self.client.application.config["CHESSGROUND_LADDER"]
+        first_pgn = self.player_data_path.parent / "first.pgn"
+        second_pgn = self.player_data_path.parent / "second.pgn"
+        first_pgn.write_text("1. e4 e5 1-0\n", encoding="utf-8")
+        second_pgn.write_text("1. d4 d5 0-1\n", encoding="utf-8")
+        first_sidecar = first_pgn.with_suffix(".pgn.lichess.json")
+        first_sidecar.write_text('{"status":"failed"}\n', encoding="utf-8")
+        ladder.record_match(
+            {
+                "match_id": "first",
+                "result": "1-0",
+                "player_color": "white",
+                "rating_category": "blitz",
+                "maia_elo": 800,
+                "pgn_file": first_pgn.name,
+                "pgn": "1. e4 e5 1-0",
+            }
+        )
+        ladder.record_match(
+            {
+                "match_id": "second",
+                "result": "0-1",
+                "player_color": "white",
+                "rating_category": "blitz",
+                "maia_elo": 800,
+                "pgn_file": second_pgn.name,
+                "pgn": "1. d4 d5 0-1",
+            }
+        )
+        self.client.post("/api/find-match", json={"time_control": "3+2"})
+        blocked = self.client.delete("/api/matches/blitz/first")
+        self.assertEqual(blocked.status_code, 409)
+        self.client.post("/api/new-game")
+
+        response = self.client.delete("/api/matches/blitz/first")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["rating"], 780)
+        self.assertFalse(first_pgn.exists())
+        self.assertFalse(first_sidecar.exists())
+        self.assertTrue(second_pgn.exists())
+        self.assertEqual(ladder.rating_for("blitz"), 780)
+        self.assertEqual(
+            ladder.matches_for("blitz")[0]["player_elo_before"],
+            800,
+        )
+
+        data = self.profile_data(self.client.get("/profile"))
+        self.assertEqual(data["playerElo"], 780)
+        self.assertEqual([match["match_id"] for match in data["matches"]], ["second"])
+        self.assertEqual([point["rating"] for point in data["ratingPoints"]], [800, 780])
+        self.assertEqual(data["colorStats"]["white"]["losses"], 1)
+        self.assertEqual(self.client.delete("/api/matches/blitz/first").status_code, 404)
+        self.assertEqual(self.client.delete("/api/matches/invalid/second").status_code, 400)
+
     def test_start_exposes_legal_destinations(self):
         response = self.client.post(
             "/api/find-match", json={"time_control": "5+5"}

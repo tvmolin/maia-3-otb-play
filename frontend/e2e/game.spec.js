@@ -789,4 +789,21 @@ test.describe('profile', () => {
     await page.goto('/');
     await expect(page.getByRole('button', { name: 'Resign' })).toBeVisible();
   });
+
+  test('deletes a game and refreshes the recalculated rating', async ({ page, request }) => {
+    await startScenario(page, request, { engine_moves: ['e5'] });
+    await movePiece(page, 'e2', 'e4');
+    await expect(moveButton(page, '1... e5')).toBeVisible();
+    await resign(page);
+    await page.getByRole('button', { name: 'Play again' }).click();
+    await page.goto('/profile');
+
+    const match = page.locator('table:not(.color-stats) tbody tr');
+    await expect(match).toContainText('Loss');
+    page.once('dialog', (dialog) => dialog.accept());
+    await match.getByRole('button', { name: 'Delete game' }).click();
+
+    await expect(page.getByText('No matches yet. Play a match to start your history.')).toBeVisible();
+    await expect(page.locator('.profile-summary strong')).toHaveText('800');
+  });
 });

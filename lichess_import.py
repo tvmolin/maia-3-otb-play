@@ -128,6 +128,14 @@ class LichessImporter:
         with self.lock:
             return read_status(pgn_path)
 
+    def remove_local_game_files(self, pgn_path):
+        path = Path(pgn_path).resolve()
+        sidecar = self._sidecar(path)
+        with self._job_lock(sidecar):
+            with self.lock:
+                path.unlink(missing_ok=True)
+                sidecar.unlink(missing_ok=True)
+
     def enqueue(self, pgn_path, retry=False, fallback_pgn=None):
         path = Path(pgn_path).resolve()
         sidecar = self._sidecar(path)

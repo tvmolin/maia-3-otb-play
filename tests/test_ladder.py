@@ -83,6 +83,39 @@ class LadderStoreTests(unittest.TestCase):
         self.assertEqual(reloaded.rating_for("rapid"), 800)
         self.assertEqual(reloaded.matches_for("blitz"), [record])
 
+    def test_deleting_match_recalculates_later_matches_from_persisted_baseline(self):
+        first = self.store.record_match(
+            self.match("1-0", match_id="first")
+        )
+        self.store.record_match(
+            self.match("0-1", match_id="second")
+        )
+        self.store.record_match(
+            {**self.match("1-0", match_id="unrated"), "rated": False}
+        )
+        self.assertEqual(self.store.rating_for("blitz"), 799)
+
+        removed = self.store.delete_match("blitz", "first")
+
+        self.assertEqual(removed, first)
+        self.assertEqual(self.store.rating_for("blitz"), 780)
+        self.assertEqual(
+            [
+                (match["match_id"], match["player_elo_before"], match["player_elo_after"])
+                for match in self.store.matches_for("blitz")
+            ],
+            [("second", 800, 780), ("unrated", 780, 780)],
+        )
+        self.assertEqual(self.store.delete_match("blitz", "unrated")["match_id"], "unrated")
+        self.assertEqual(self.store.delete_match("blitz", "second")["match_id"], "second")
+        self.assertEqual(self.store.rating_for("blitz"), 800)
+
+        persisted = json.loads(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(persisted["initial_ratings"], {"blitz": 800, "rapid": 800})
+        reloaded = LadderStore(self.path)
+        self.assertEqual(reloaded.rating_for("blitz"), 800)
+        self.assertEqual(reloaded.matches_for("blitz"), [])
+
     def test_blitz_and_rapid_ratings_are_independent(self):
         self.store.record_match(self.match("1-0"))
         rapid = self.store.record_match(

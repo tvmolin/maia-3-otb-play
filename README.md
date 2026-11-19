@@ -299,10 +299,13 @@ randomly generated, unique Maia username, shown alongside the board and saved
 in match history and PGN. Draws count as half a point.
 Open **Profile** to switch between your Blitz and Rapid rating graphs and match
 histories. Completed PGNs are saved with each match-history entry and can be
-copied from its row. The backend validates moves and remains the source of truth
-for game state. Your accepted move appears in the move list and captured-piece
-display before Maia finishes thinking. If the engine fails, your move is kept
-and the clock is paused; use **Retry Maia** or **Undo** to continue.
+copied from its row. Use **Delete game** to remove a match from your local
+history and recalculate the category rating from the remaining matches. This
+does not delete a game already imported to Lichess. Unrated games remain in the
+history but do not affect ratings. The backend validates moves and remains the
+source of truth for game state. Your accepted move appears in the move list and
+captured-piece display before Maia finishes thinking. If the engine fails, your
+move is kept and the clock is paused; use **Retry Maia** or **Undo** to continue.
 The Chessground `POST /api/move` response contains the accepted player position
 and, unless the game has ended, `maia_thinking: true`; `GET /api/state` reports
 Maia's subsequent move or an engine error. `POST /api/retry-maia` retries a

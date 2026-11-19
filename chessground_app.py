@@ -542,6 +542,68 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
             chart_max=chart_max,
         )
 
+    @app.delete("/api/matches/<category>/<match_id>")
+    def delete_match(category, match_id):
+        if category not in RATING_CATEGORIES:
+            return jsonify(error="Choose blitz or rapid."), 400
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            if game.started:
+                return jsonify(
+                    error="Return to matchmaking before deleting a saved game."
+                ), 409
+            match = next(
+                (
+                    match for match in ladder.matches_for(category)
+                    if match["match_id"] == match_id
+                ),
+                None,
+            )
+            if match is None:
+                return jsonify(error="Match not found."), 404
+
+            pgn_path = match_pgn_path(match)
+            shared_pgn = pgn_path is not None and any(
+                other["match_id"] != match_id
+                and match_pgn_path(other) == pgn_path
+                for matches in ladder.matches.values()
+                for other in matches
+            )
+            if pgn_path is not None and not shared_pgn:
+                try:
+                    if lichess_importer is not None:
+                        lichess_importer.remove_local_game_files(pgn_path)
+                    else:
+                        pgn_path.unlink(missing_ok=True)
+                        pgn_path.with_suffix(".pgn.lichess.json").unlink(
+                            missing_ok=True
+                        )
+                except OSError:
+                    app.logger.exception(
+                        "Could not remove local files for match %s", match_id
+                    )
+                    return jsonify(
+                        error=(
+                            "Could not remove the local game files; "
+                            "match history and rating were not changed."
+                        )
+                    ), 500
+
+            try:
+                removed = ladder.delete_match(category, match_id)
+            except (OSError, ValueError):
+                app.logger.exception(
+                    "Could not delete match %s and recalculate ratings", match_id
+                )
+                return jsonify(
+                    error="Could not delete the game and recalculate ratings."
+                ), 500
+            if removed is None:
+                return jsonify(error="Match not found."), 404
+        return jsonify(
+            deleted_match_id=match_id,
+            rating=ladder.rating_for(category),
+        )
+
     @app.get("/api/lichess/status")
     def lichess_status():
         category = request.args.get("category", "blitz")

@@ -2,4 +2,9 @@ https://lichess.org/game/5H4r6zBt
 Lost due to bad endgame intuition, didn't notice a passed pawn, didn't use my rook properly to defend the pawn, missed a hanging rook, missed 2 triple forks
 
 
+https://lichess.org/game/zppThlBp
+Won but I missed a pawn fork like 57 times during this game.
+I really need to work on that pattern recognition.
+
+
 

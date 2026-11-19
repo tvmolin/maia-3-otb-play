@@ -730,6 +730,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
             if started_now:
                 game.maia_name = opponent_name
                 base_seconds, increment_seconds = time_control_values
+                game.configure_clock(base_seconds, increment_seconds)
                 app.config["CHESSGROUND_RATING_CATEGORY"] = category
                 app.config["CHESSGROUND_UNRATED_MODE"] = unrated_mode
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
@@ -834,6 +835,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
             if started_now:
                 game.board = starting_board
                 game.move_times = [None] * len(starting_board.move_stack)
+                game.configure_clock(base_seconds, increment_seconds)
                 game.maia_name = ladder.generate_opponent_name()
                 app.config["CHESSGROUND_RATING_CATEGORY"] = category
                 app.config["CHESSGROUND_UNRATED_MODE"] = True

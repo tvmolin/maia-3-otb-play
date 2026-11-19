@@ -95,6 +95,9 @@ def build_pgn(
     maia_elo,
     result,
     move_times=None,
+    clock_base_seconds=None,
+    clock_increment_seconds=0,
+    clock_start_ply=0,
 ):
     game = chess.pgn.Game.from_board(board)
     game.headers["Event"] = "OTB Maia game"
@@ -105,9 +108,32 @@ def build_pgn(
     game.headers["BlackElo"] = str(maia_elo if player_color == chess.WHITE else player_elo)
     game.headers["Result"] = result
     if move_times is not None:
-        for node, elapsed in zip(game.mainline(), move_times):
-            if elapsed is not None:
-                node.comment = f"[%emt {format_elapsed_time(elapsed)}]"
+        nodes = list(game.mainline())
+        if clock_base_seconds is None:
+            for node, elapsed in zip(nodes, move_times):
+                if elapsed is not None:
+                    node.comment = f"[%emt {format_elapsed_time(elapsed)}]"
+        else:
+            game.headers["TimeControl"] = (
+                f"{clock_base_seconds}+{clock_increment_seconds}"
+            )
+            remaining = {
+                chess.WHITE: float(clock_base_seconds),
+                chess.BLACK: float(clock_base_seconds),
+            }
+            clock_known = {chess.WHITE: True, chess.BLACK: True}
+            for ply, (node, elapsed) in enumerate(zip(nodes, move_times)):
+                if ply < clock_start_ply:
+                    continue
+                mover = node.parent.board().turn
+                if elapsed is None:
+                    clock_known[mover] = False
+                elif clock_known[mover]:
+                    remaining[mover] = max(
+                        0.0,
+                        remaining[mover] - elapsed + clock_increment_seconds,
+                    )
+                    node.comment = f"[%clk {format_elapsed_time(remaining[mover])}]"
     exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=True)
     return game.accept(exporter)
 
@@ -157,6 +183,9 @@ class GameSession:
         self.saved_pgn_path = None
         self.saved_pgn_text = None
         self.lichess_importer = lichess_importer
+        self.clock_base_seconds = None
+        self.clock_increment_seconds = 0
+        self.clock_start_ply = 0
         self._think_skip = Event()
         self._think_state_lock = Lock()
         self._maia_turn_active = False
@@ -281,6 +310,24 @@ class GameSession:
                 self.final_result = None
                 self.saved_pgn_path = None
                 self.saved_pgn_text = None
+                self.clock_base_seconds = None
+                self.clock_increment_seconds = 0
+                self.clock_start_ply = 0
+
+    def configure_clock(self, base_seconds, increment_seconds):
+        if (
+            isinstance(base_seconds, bool)
+            or not isinstance(base_seconds, int)
+            or base_seconds <= 0
+            or isinstance(increment_seconds, bool)
+            or not isinstance(increment_seconds, int)
+            or increment_seconds < 0
+        ):
+            raise ValueError("Clock time must be positive with a non-negative increment.")
+        with self.lock:
+            self.clock_base_seconds = base_seconds
+            self.clock_increment_seconds = increment_seconds
+            self.clock_start_ply = len(self.board.move_stack)
 
     def save_pgn_file(self):
         with self.lock:
@@ -477,4 +524,7 @@ class GameSession:
             self.maia_elo,
             result,
             self.move_times,
+            self.clock_base_seconds,
+            self.clock_increment_seconds,
+            self.clock_start_ply,
         )

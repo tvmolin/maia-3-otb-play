@@ -620,7 +620,7 @@ class ChessgroundAppTests(unittest.TestCase):
         )
         self.assertEqual(state["clock"]["running_color"], "white")
 
-    def test_completed_pgn_includes_elapsed_time_for_each_move(self):
+    def test_completed_pgn_includes_lichess_clock_time_for_each_move(self):
         now = [100.0]
 
         def think_for_three_seconds(_session, _seconds):
@@ -646,8 +646,9 @@ class ChessgroundAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         pgn = save_pgn.call_args.args[0]
-        self.assertIn("e4 { [%emt 0:00:02.00] }", pgn)
-        self.assertIn("e5 { [%emt 0:00:03.00] }", pgn)
+        self.assertIn('[TimeControl "300+5"]', pgn)
+        self.assertIn("e4 { [%clk 0:05:03.00] }", pgn)
+        self.assertIn("e5 { [%clk 0:05:02.00] }", pgn)
 
     def test_player_timeout_rejects_move_and_sets_the_result(self):
         now = [0.0]

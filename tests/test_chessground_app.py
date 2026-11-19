@@ -306,6 +306,48 @@ class ChessgroundAppTests(unittest.TestCase):
             {"white": 300_000, "black": 300_000},
         )
 
+    def test_start_from_fen_uses_side_to_move_and_unrated_time_control(self):
+        self.engine.moves = ["e4"]
+        with patch.object(GameSession, "wait_for_maia_think"):
+            response = self.client.post(
+                "/api/start-from-fen",
+                json={
+                    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1",
+                    "time_control": "20+10",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        state = response.json["state"]
+        self.assertEqual(state["player_color"], "black")
+        self.assertEqual(state["time_control"], "20+10")
+        self.assertEqual(state["rating_category"], "rapid")
+        self.assertTrue(state["unrated_mode"])
+        self.assertEqual(state["history"], [])
+        self.assertTrue(state["can_move"])
+        self.assertEqual(state["clock"]["running_color"], "black")
+        self.assertEqual(state["clock"]["base_seconds"], 1_200)
+        self.assertLessEqual(state["clock"]["remaining_ms"]["white"], 1_200_000)
+        self.assertLessEqual(state["clock"]["remaining_ms"]["black"], 1_200_000)
+
+    def test_start_from_fen_rejects_invalid_or_finished_positions(self):
+        invalid_fen = self.client.post(
+            "/api/start-from-fen",
+            json={"fen": "not a FEN", "time_control": "3+2"},
+        )
+        finished_position = self.client.post(
+            "/api/start-from-fen",
+            json={
+                "fen": "7k/6Q1/6K1/8/8/8/8/8 b - - 0 1",
+                "time_control": "3+2",
+            },
+        )
+
+        self.assertEqual(invalid_fen.status_code, 400)
+        self.assertIn("FEN", invalid_fen.json["error"])
+        self.assertEqual(finished_position.status_code, 400)
+        self.assertIn("game in progress", finished_position.json["error"])
+
     def test_find_match_randomizes_color_and_maia_settings_on_the_server(self):
         self.engine.moves = ["e4"]
         with (

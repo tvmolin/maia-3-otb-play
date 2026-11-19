@@ -190,6 +190,40 @@ test.describe('starting a match', () => {
     }
   });
 
+  test('starts an unrated game from FEN with its side to move as the player', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/');
+    await page.getByRole('textbox', { name: 'FEN position' }).fill(
+      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 0 1',
+    );
+    const timeControls = page.getByRole('textbox', { name: 'Time control' });
+    await expect(timeControls).toHaveCount(2);
+    for (const form of [page.locator('#setup'), page.locator('#fen-setup')]) {
+      const buttonWidth = await form.locator('button[type="submit"]')
+        .evaluate((button) => getComputedStyle(button).width);
+      const controlWidth = await form.getByRole('textbox', { name: 'Time control' })
+        .evaluate((control) => getComputedStyle(control).width);
+      expect(buttonWidth).toBe(controlWidth);
+    }
+    await timeControls.nth(1).click();
+    await page.locator('[data-combobox-option]:visible').filter({ hasText: /^15\+10$/ }).click();
+    await expect(timeControls.nth(1)).toHaveValue('15+10');
+
+    await page.getByRole('button', { name: 'Start unrated game' }).click();
+
+    await expect(page.getByRole('button', { name: 'Resign' })).toBeVisible();
+    await expect(page.locator('.cg-wrap')).toHaveClass(/orientation-black/);
+    await expect(status(page)).toContainText('You (800) are black');
+    await expect(status(page)).toContainText('Your move.');
+    await expect(page.getByRole('button', { name: 'Find match' })).toBeHidden();
+
+    await resign(page);
+    await expect(page.getByText('Unrated · Rating 800')).toBeVisible();
+    await page.goto('/profile');
+    await page.getByRole('link', { name: 'Rapid' }).click();
+    await expect(page.locator('table:not(.color-stats) tbody tr')).toContainText('Unrated');
+  });
+
   test('plays moves as white against Maia and shows the game panels', async ({ page, request }) => {
     await resetServer(request, { engine_moves: ['e5', 'Nc6'] });
     await page.goto('/');

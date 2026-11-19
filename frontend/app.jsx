@@ -13,6 +13,7 @@ import {
   Stack,
   Switch,
   Text,
+  TextInput,
   ThemeIcon,
   Title,
 } from '@mantine/core';
@@ -40,6 +41,7 @@ import blueMarbleBoard from './boards/blue-marble.jpg';
 import mosaicBoard from './boards/mosaic.png';
 
 const initialFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
+const timeControls = ['3+2', '5+5', '15+10', '20+10'];
 const boardThemes = {
   classic: { label: 'Classic', image: `url("${defaultBoard}")` },
   wood: { label: 'Wood', image: `url("${woodBoard}")` },
@@ -574,6 +576,8 @@ function App() {
   const [requestPending, setRequestPending] = useState(false);
   const [statusOverride, setStatusOverride] = useState('');
   const [timeControl, setTimeControl] = useState('3+2');
+  const [fenTimeControl, setFenTimeControl] = useState('3+2');
+  const [fenPosition, setFenPosition] = useState('');
   const [playerColor, setPlayerColor] = useState('random');
   const [unratedMode, setUnratedMode] = useState(false);
   const [promotionMove, setPromotionMove] = useState(null);
@@ -787,6 +791,26 @@ function App() {
     }
   };
 
+  const startFromFen = async (event) => {
+    event.preventDefault();
+    setPending(true);
+    setStatusOverride('Starting game from FEN…');
+    try {
+      const response = await fetch('/api/start-from-fen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fen: fenPosition, time_control: fenTimeControl }),
+      });
+      updateState((await readJson(response)).state);
+      setReviewPly(null);
+    } catch (error) {
+      setStatusOverride(error.message);
+      await refreshState().catch((refreshError) => setStatusOverride(refreshError.message));
+    } finally {
+      setPending(false);
+    }
+  };
+
   const newGame = async () => {
     if (stateRef.current) {
       updateState(optimisticNewGameState(stateRef.current));
@@ -915,7 +939,7 @@ function App() {
                   label="Time control"
                   value={timeControl}
                   onChange={setTimeControl}
-                  data={['3+2', '5+5', '15+10', '20+10']}
+                  data={timeControls}
                   allowDeselect={false}
                   disabled={requestPending}
                 />
@@ -937,8 +961,36 @@ function App() {
                   onChange={(event) => setUnratedMode(event.currentTarget.checked)}
                   disabled={requestPending}
                 />
-                <Button type="submit" leftSection={<IconChess size={17} />} loading={requestPending}>
+                <Button type="submit" fullWidth leftSection={<IconChess size={17} />} loading={requestPending}>
                   Find match
+                </Button>
+              </Paper>
+            )}
+            {!state?.started && (
+              <Paper component="form" id="fen-setup" className="panel" onSubmit={startFromFen}>
+                <div className="setup-heading">
+                  <span className="eyebrow">YOUR POSITION, YOUR GAME</span>
+                  <Title order={2}>Start from a FEN</Title>
+                  <Text>Start an unrated game from any valid chess position.</Text>
+                </div>
+                <TextInput
+                  label="FEN position"
+                  placeholder="Paste a FEN position"
+                  value={fenPosition}
+                  onChange={(event) => setFenPosition(event.currentTarget.value)}
+                  disabled={requestPending}
+                  required
+                />
+                <Select
+                  label="Time control"
+                  value={fenTimeControl}
+                  onChange={setFenTimeControl}
+                  data={timeControls}
+                  allowDeselect={false}
+                  disabled={requestPending}
+                />
+                <Button type="submit" fullWidth leftSection={<IconChess size={17} />} loading={requestPending}>
+                  Start unrated game
                 </Button>
               </Paper>
             )}

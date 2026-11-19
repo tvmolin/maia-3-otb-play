@@ -767,6 +767,94 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
             save_finished_game()
         return state_response()
 
+    @app.post("/api/start-from-fen")
+    def start_from_fen():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return state_response(400, "Send the game settings as a JSON object.")
+
+        fen = payload.get("fen")
+        if not isinstance(fen, str) or not fen.strip():
+            return state_response(400, "Enter a FEN position.")
+        try:
+            starting_board = chess.Board(fen.strip())
+        except ValueError:
+            return state_response(400, "Enter a valid FEN position.")
+        if not starting_board.is_valid():
+            return state_response(400, "Enter a valid chess position in FEN format.")
+        if starting_board.is_game_over(claim_draw=True):
+            return state_response(400, "The FEN position must have a game in progress.")
+
+        time_control = payload.get("time_control", "3+2")
+        if not isinstance(time_control, str):
+            return state_response(400, "Choose a supported time control.")
+        category = next(
+            (
+                category
+                for category, controls in TIME_CONTROLS.items()
+                if time_control in controls
+            ),
+            None,
+        )
+        if category is None:
+            return state_response(400, "Choose a supported time control.")
+        base_seconds, increment_seconds = TIME_CONTROLS[category][time_control]
+
+        with app.config["CHESSGROUND_REQUEST_LOCK"]:
+            if game.started:
+                return state_response(409, "Finish the current match before starting another.")
+            player_color = starting_board.turn
+            player_elo = ladder.rating_for(category)
+            min_opponent_elo = max(
+                MIN_MAIA_ENGINE_ELO + MAIA_ENGINE_ELO_OFFSET,
+                player_elo - MATCH_ELO_OFFSET,
+            )
+            max_opponent_elo = min(
+                MAX_MAIA_ENGINE_ELO + MAIA_ENGINE_ELO_OFFSET,
+                player_elo + MATCH_ELO_OFFSET,
+            )
+            max_opponent_elo = max(min_opponent_elo, max_opponent_elo)
+            maia_elo = random.randint(min_opponent_elo, max_opponent_elo)
+            engine_maia_elo = maia_elo - MAIA_ENGINE_ELO_OFFSET
+            temperature = random.uniform(*MATCH_TEMPERATURE_RANGE)
+            try:
+                started_now = game.start(
+                    player_color,
+                    maia_elo=maia_elo,
+                    engine_maia_elo=engine_maia_elo,
+                    player_elo=player_elo,
+                    temperature=temperature,
+                )
+            except ValueError as error:
+                return state_response(400, str(error))
+            except Exception:
+                app.logger.exception("Failed to configure Maia for a FEN game.")
+                return state_response(503, "Could not configure the engine.")
+
+            if started_now:
+                game.board = starting_board
+                game.move_times = [None] * len(starting_board.move_stack)
+                game.maia_name = ladder.generate_opponent_name()
+                app.config["CHESSGROUND_RATING_CATEGORY"] = category
+                app.config["CHESSGROUND_UNRATED_MODE"] = True
+                app.config["CHESSGROUND_TIME_CONTROL"] = time_control
+                app.config["CHESSGROUND_PLAY_INSTANTLY"] = False
+                app.config["CHESSGROUND_TEMPERATURE"] = temperature
+                app.config["CHESSGROUND_MATCH_ID"] = str(uuid.uuid4())
+                app.config.pop("CHESSGROUND_RATING_RECORD", None)
+                app.config.pop("CHESSGROUND_TIMEOUT_LOSER", None)
+                app.config.pop("CHESSGROUND_MAIA_ERROR", None)
+                app.config.pop("CHESSGROUND_MAIA_PAUSED_AT", None)
+                clock_history.clear()
+                clock.start(
+                    base_seconds,
+                    increment_seconds,
+                    player_color,
+                    time.monotonic(),
+                )
+            save_finished_game()
+        return state_response()
+
     @app.post("/api/play-instantly")
     def set_play_instantly():
         payload = request.get_json(silent=True)

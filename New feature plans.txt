@@ -1,2 +1,2 @@
-
 - Better rating graph
+- Start unrated game from FEN

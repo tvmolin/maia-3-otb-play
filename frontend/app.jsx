@@ -325,6 +325,7 @@ function PlayerBar({ state, color, pieces, advantage, label, clock, clockTimes }
 function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, appearance }) {
   const elementRef = useRef(null);
   const groundRef = useRef(null);
+  const drawableShapesRef = useRef([]);
   const moveRef = useRef(onMove);
   const previousWaitingRef = useRef(false);
   const fitBoardRef = useRef(() => {});
@@ -338,6 +339,11 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
       autoCastle: true,
       viewOnly: false,
       premovable: { enabled: true },
+      drawable: {
+        onChange: (shapes) => {
+          drawableShapesRef.current = shapes;
+        },
+      },
       movable: {
         free: false,
         dests: new Map(),
@@ -423,6 +429,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
           events: { after: (...args) => moveRef.current(...args) },
         },
         premovable: { enabled: true },
+        drawable: { shapes: drawableShapesRef.current },
       });
       return;
     }
@@ -439,6 +446,7 @@ function ChessBoard({ state, reviewPly, requestPending, pendingMove, onMove, app
         events: { after: (...args) => moveRef.current(...args) },
       },
       premovable: { enabled: state.started && !state.game_over && !reviewing },
+      drawable: { shapes: drawableShapesRef.current },
     });
     if (previousWaitingRef.current && !waiting && !pendingMove && !requestPending) {
       if (canMove) groundRef.current.playPremove();

@@ -368,6 +368,24 @@ test.describe('starting a match', () => {
 });
 
 test.describe('moves and board feedback', () => {
+  test('keeps drawn arrows visible while the board refreshes', async ({ page, request }) => {
+    await startScenario(page, request, { think_seconds: 4, engine_moves: ['e5'] });
+    await movePiece(page, 'e2', 'e4');
+    await expect(status(page)).toContainText('thinking');
+
+    const board = await page.locator('.cg-wrap').boundingBox();
+    const squareSize = board.width / 8;
+    await page.mouse.move(board.x + squareSize / 2, board.y + squareSize * 6.5);
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(board.x + squareSize / 2, board.y + squareSize * 5.5);
+    await page.mouse.up({ button: 'right' });
+
+    const arrow = page.locator('.cg-shapes > g > g');
+    await expect(arrow).toHaveCount(1);
+    await page.waitForTimeout(700);
+    await expect(arrow).toHaveCount(1);
+  });
+
   test('offers promotion choices, can cancel, then promotes', async ({ page, request }) => {
     const sounds = [];
     page.on('request', (requestEvent) => {

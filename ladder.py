@@ -80,6 +80,9 @@ class LadderStore:
     def record_match(self, match):
         category = match.get("rating_category")
         self._validate_category(category)
+        rated = match.get("rated", True)
+        if not isinstance(rated, bool):
+            raise ValueError("Match rated status must be a boolean.")
         for category_matches in self.matches.values():
             for existing in category_matches:
                 if existing["match_id"] == match["match_id"]:
@@ -87,13 +90,17 @@ class LadderStore:
 
         player_elo = self.ratings[category]
         player_score = self._player_score(match["result"], match["player_color"])
-        expected_score = 1 / (
-            1 + 10 ** ((match["maia_elo"] - player_elo) / 400)
-        )
-        new_elo = round(player_elo + K_FACTOR * (player_score - expected_score))
-        new_elo = min(MAX_PLAYER_ELO, max(0, new_elo))
+        if rated:
+            expected_score = 1 / (
+                1 + 10 ** ((match["maia_elo"] - player_elo) / 400)
+            )
+            new_elo = round(player_elo + K_FACTOR * (player_score - expected_score))
+            new_elo = min(MAX_PLAYER_ELO, max(0, new_elo))
+        else:
+            new_elo = player_elo
         record = {
             **match,
+            "rated": rated,
             "player_elo_before": player_elo,
             "player_elo_after": new_elo,
             "rating_change": new_elo - player_elo,
@@ -101,7 +108,7 @@ class LadderStore:
             "outcome": (
                 "win" if player_score == 1 else "loss" if player_score == 0 else "draw"
             ),
-            "k_factor": K_FACTOR,
+            "k_factor": K_FACTOR if rated else None,
         }
         ratings = {**self.ratings, category: new_elo}
         matches = {**self.matches, category: [*self.matches[category], record]}

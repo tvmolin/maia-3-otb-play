@@ -47,6 +47,20 @@ class LadderStoreTests(unittest.TestCase):
         self.assertEqual(record["outcome"], "draw")
         self.assertEqual(record["rating_change"], 10)
 
+    def test_unrated_match_is_saved_without_changing_rating(self):
+        record = self.store.record_match(
+            {**self.match("1-0"), "rated": False}
+        )
+
+        self.assertEqual(self.store.rating_for("blitz"), 800)
+        self.assertEqual(record["player_elo_before"], 800)
+        self.assertEqual(record["player_elo_after"], 800)
+        self.assertEqual(record["rating_change"], 0)
+        self.assertEqual(record["outcome"], "win")
+        self.assertFalse(record["rated"])
+        self.assertIsNone(record["k_factor"])
+        self.assertEqual(self.store.matches_for("blitz"), [record])
+
     def test_color_is_accounted_for_in_result(self):
         record = self.store.record_match(
             self.match("1-0", player_color="black")

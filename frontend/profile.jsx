@@ -90,8 +90,8 @@ function Profile() {
       <td>{(match.player_color || 'Unknown')[0].toUpperCase() + (match.player_color || 'Unknown').slice(1)}</td>
       <td>{match.outcome[0].toUpperCase() + match.outcome.slice(1)}</td>
       <td>{match.time_control}</td>
-      <td className={match.rating_change > 0 ? 'rating-positive' : match.rating_change < 0 ? 'rating-negative' : ''}>
-        {match.rating_change > 0 ? '+' : ''}{match.rating_change}
+      <td className={match.rated === false ? '' : match.rating_change > 0 ? 'rating-positive' : match.rating_change < 0 ? 'rating-negative' : ''}>
+        {match.rated === false ? 'Unrated' : `${match.rating_change > 0 ? '+' : ''}${match.rating_change}`}
       </td>
       <td>{match.player_elo_after}</td>
       <td>

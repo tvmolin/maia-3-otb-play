@@ -627,6 +627,22 @@ test.describe('reviewing and reloading', () => {
 });
 
 test.describe('ending a game', () => {
+  test('saves unrated games without changing rating', async ({ page, request }) => {
+    await resetServer(request);
+    await page.goto('/');
+    await page.getByText('Unrated mode', { exact: true }).click();
+    await expect(page.getByRole('switch', { name: 'Unrated mode' })).toBeChecked();
+    await page.getByRole('button', { name: 'Find match' }).click();
+    await expect(page.getByRole('button', { name: 'Resign' })).toBeVisible();
+    await resign(page);
+
+    await expect(page.getByText('Unrated · Rating 800')).toBeVisible();
+    await page.goto('/profile');
+    const match = page.locator('table:not(.color-stats) tbody tr');
+    await expect(match).toContainText('Unrated');
+    await expect(match).toContainText('800');
+  });
+
   test('shows a win with rating change after checkmate', async ({ page, request }) => {
     await startScenario(page, request, { fen: '6k1/5ppp/8/8/8/8/8/R6K w - - 0 1' });
 

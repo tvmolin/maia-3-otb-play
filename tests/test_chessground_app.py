@@ -391,6 +391,61 @@ class ChessgroundAppTests(unittest.TestCase):
             {"SelfElo": 620, "OppoElo": 781, "Temperature": "0.7"},
         )
 
+    def test_unrated_game_uses_category_rating_and_saves_without_rating_change(self):
+        ladder = self.client.application.config["CHESSGROUND_LADDER"]
+        ladder.record_match(
+            {
+                "match_id": "rapid-win",
+                "result": "1-0",
+                "player_color": "white",
+                "rating_category": "rapid",
+                "maia_elo": 800,
+            }
+        )
+
+        response = self.client.post(
+            "/api/find-match",
+            json={
+                "color": "white",
+                "time_control": "20+10",
+                "unrated_mode": True,
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["state"]["player_elo"], 820)
+        self.assertTrue(response.json["state"]["unrated_mode"])
+        self.assertEqual(
+            self.engine.configured[-1],
+            {"SelfElo": 620, "OppoElo": 820, "Temperature": "0.7"},
+        )
+
+        finished = self.client.post("/api/command", json={"command": "resign"})
+        state = finished.json["state"]
+        self.assertEqual(state["rating_change"], None)
+        self.assertEqual(state["player_elo"], 820)
+        self.assertEqual(len(ladder.matches_for("rapid")), 2)
+        unrated_match = ladder.matches_for("rapid")[-1]
+        self.assertFalse(unrated_match["rated"])
+        self.assertEqual(unrated_match["rating_change"], 0)
+        self.assertEqual(ladder.rating_for("rapid"), 820)
+
+        profile = self.profile_data(self.client.get("/profile?category=rapid"))
+        self.assertEqual(profile["playerElo"], 820)
+        self.assertEqual(profile["colorStats"]["white"]["games"], 2)
+        self.assertEqual(
+            [point["rating"] for point in profile["ratingPoints"]],
+            [800, 820],
+        )
+
+    def test_find_match_rejects_non_boolean_unrated_mode(self):
+        response = self.client.post(
+            "/api/find-match",
+            json={"time_control": "3+2", "unrated_mode": "yes"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("unrated mode", response.json["error"])
+
     def test_start_supports_rapid_time_control_and_rapid_rating(self):
         ladder = self.client.application.config["CHESSGROUND_LADDER"]
         ladder.record_match(

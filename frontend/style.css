@@ -629,7 +629,7 @@ button:disabled {
   line-height: 1.5;
 }
 
-.game-checkbox-wrapper {
+.game-toggle-wrapper {
   display: flex;
   align-items: center;
   margin-bottom: 12px;
@@ -640,7 +640,7 @@ button:disabled {
   transition: border-color 140ms ease, background 140ms ease;
 }
 
-.game-checkbox-wrapper:hover {
+.game-toggle-wrapper:hover {
   border-color: #557d3f;
   background: rgba(85, 125, 63, 0.08);
 }

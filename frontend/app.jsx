@@ -5,13 +5,13 @@ import {
   ActionIcon,
   Anchor,
   Button,
-  Checkbox,
   Group,
   MantineProvider,
   Modal,
   Paper,
   Select,
   Stack,
+  Switch,
   Text,
   ThemeIcon,
   Title,
@@ -575,6 +575,7 @@ function App() {
   const [statusOverride, setStatusOverride] = useState('');
   const [timeControl, setTimeControl] = useState('3+2');
   const [playerColor, setPlayerColor] = useState('random');
+  const [unratedMode, setUnratedMode] = useState(false);
   const [promotionMove, setPromotionMove] = useState(null);
   const [pendingMove, setPendingMove] = useState(null);
   const requestPendingRef = useRef(false);
@@ -771,7 +772,11 @@ function App() {
       const response = await fetch('/api/find-match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ time_control: timeControl, color: playerColor }),
+        body: JSON.stringify({
+          time_control: timeControl,
+          color: playerColor,
+          unrated_mode: unratedMode,
+        }),
       });
       updateState((await readJson(response)).state);
     } catch (error) {
@@ -926,6 +931,12 @@ function App() {
                   allowDeselect={false}
                   disabled={requestPending}
                 />
+                <Switch
+                  label="Unrated mode"
+                  checked={unratedMode}
+                  onChange={(event) => setUnratedMode(event.currentTarget.checked)}
+                  disabled={requestPending}
+                />
                 <Button type="submit" leftSection={<IconChess size={17} />} loading={requestPending}>
                   Find match
                 </Button>
@@ -943,14 +954,18 @@ function App() {
                         <Text>{getResultDetail(state, outcome)}</Text>
                       </div>
                       <div className="result-rating">
-                        {state.rating_change === null ? `Rating ${state.player_elo}` : `${state.rating_change > 0 ? '+' : ''}${state.rating_change} rating · ${state.player_elo}`}
+                        {state.unrated_mode
+                          ? `Unrated · Rating ${state.player_elo}`
+                          : state.rating_change === null
+                            ? `Rating ${state.player_elo}`
+                            : `${state.rating_change > 0 ? '+' : ''}${state.rating_change} rating · ${state.player_elo}`}
                       </div>
                     </div>
                   )}
                   <div id="status" role="status" aria-live="polite">{statusText}</div>
                   {!state.game_over && (
-                    <div className="game-checkbox-wrapper">
-                      <Checkbox
+                    <div className="game-toggle-wrapper">
+                      <Switch
                         label="Play instantly"
                         checked={Boolean(state.play_instantly)}
                         onChange={toggleInstant}

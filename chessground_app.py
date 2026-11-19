@@ -152,6 +152,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 "player_color": game.player_color_name,
                 "opponent_name": game.maia_name,
                 "rating_category": app.config["CHESSGROUND_RATING_CATEGORY"],
+                "rated": not app.config.get("CHESSGROUND_UNRATED_MODE", False),
                 "maia_elo": game.maia_elo,
                 "temperature": game.temperature,
                 "time_control": app.config["CHESSGROUND_TIME_CONTROL"],
@@ -314,10 +315,14 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 "rating_category": app.config.get(
                     "CHESSGROUND_RATING_CATEGORY", "blitz"
                 ),
+                "unrated_mode": app.config.get("CHESSGROUND_UNRATED_MODE", False),
                 "player_ratings": dict(ladder.ratings),
                 "rating_change": (
                     app.config["CHESSGROUND_RATING_RECORD"]["rating_change"]
-                    if app.config.get("CHESSGROUND_RATING_RECORD")
+                    if (
+                        app.config.get("CHESSGROUND_RATING_RECORD")
+                        and app.config["CHESSGROUND_RATING_RECORD"]["rated"]
+                    )
                     else None
                 ),
                 "rating_outcome": (
@@ -485,8 +490,13 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 round(stats["score"] * 100 / games, 1) if games else None
             )
 
-        ratings = [matches[0]["player_elo_before"]] if matches else [player_elo]
-        ratings.extend(match["player_elo_after"] for match in matches)
+        rated_matches = [match for match in matches if match.get("rated", True)]
+        ratings = (
+            [rated_matches[0]["player_elo_before"]]
+            if rated_matches
+            else [player_elo]
+        )
+        ratings.extend(match["player_elo_after"] for match in rated_matches)
         low = min(ratings)
         high = max(ratings)
         padding = max(20, (high - low) * 0.15)
@@ -612,6 +622,9 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
         )
         if category is None:
             return state_response(400, "Choose a supported time control.")
+        unrated_mode = payload.get("unrated_mode", False)
+        if not isinstance(unrated_mode, bool):
+            return state_response(400, "Choose whether to play in unrated mode.")
         requested_color = payload.get("color", "random")
         if requested_color not in ("random", "white", "black"):
             return state_response(400, "Choose a supported piece color.")
@@ -656,6 +669,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 game.maia_name = opponent_name
                 base_seconds, increment_seconds = time_control_values
                 app.config["CHESSGROUND_RATING_CATEGORY"] = category
+                app.config["CHESSGROUND_UNRATED_MODE"] = unrated_mode
                 app.config["CHESSGROUND_TIME_CONTROL"] = time_control
                 app.config["CHESSGROUND_PLAY_INSTANTLY"] = False
                 app.config["CHESSGROUND_TEMPERATURE"] = temperature
@@ -681,6 +695,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                     app.config.pop("CHESSGROUND_TIME_CONTROL", None)
                     app.config.pop("CHESSGROUND_PLAY_INSTANTLY", None)
                     app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
+                    app.config.pop("CHESSGROUND_UNRATED_MODE", None)
                     app.config.pop("CHESSGROUND_TEMPERATURE", None)
                     app.config.pop("CHESSGROUND_MATCH_ID", None)
                     app.config.pop("CHESSGROUND_RATING_RECORD", None)
@@ -812,6 +827,7 @@ def create_app(engine, board=None, player_data_path=None, lichess_importer=None)
                 app.config.pop("CHESSGROUND_TIME_CONTROL", None)
                 app.config.pop("CHESSGROUND_PLAY_INSTANTLY", None)
                 app.config.pop("CHESSGROUND_RATING_CATEGORY", None)
+                app.config.pop("CHESSGROUND_UNRATED_MODE", None)
                 app.config.pop("CHESSGROUND_TEMPERATURE", None)
                 app.config.pop("CHESSGROUND_MATCH_ID", None)
                 app.config.pop("CHESSGROUND_RATING_RECORD", None)

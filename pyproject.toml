@@ -21,6 +21,7 @@ dependencies = [
   "torch",
   "faster-whisper>=1.1,<2",
   "av>=11,<19",
+  "piper-tts>=1.8,<2",
 ]
 
 [project.urls]

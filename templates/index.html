@@ -240,6 +240,7 @@
     <div id="voice-controls" hidden>
       <button id="record-button" type="button">Speak move</button>
       <button id="stop-recording-button" type="button" hidden>Send move</button>
+      <label><input id="speak-maia-moves" type="checkbox" checked> Speak Maia's moves</label>
     </div>
     <button id="help-button" type="button" hidden>Help</button>
     <button id="go-button" type="button" hidden>Go now</button>
@@ -260,6 +261,7 @@
     const voiceControls = document.querySelector("#voice-controls");
     const recordButton = document.querySelector("#record-button");
     const stopRecordingButton = document.querySelector("#stop-recording-button");
+    const speakMaiaMoves = document.querySelector("#speak-maia-moves");
     const helpButton = document.querySelector("#help-button");
     const goButton = document.querySelector("#go-button");
     const copyPgnButton = document.querySelector("#copy-pgn-button");
@@ -273,6 +275,9 @@
     let recorder = null;
     let recordingStream = null;
     let recordingChunks = [];
+    let speechAudioContext = null;
+    let speechUnlockError = null;
+    let speechPlaybackQueue = Promise.resolve();
 
     function scrollHistoryToBottom() {
       requestAnimationFrame(() => {
@@ -370,6 +375,61 @@
       return data;
     }
 
+    function unlockSpeechPlayback() {
+      if (!speakMaiaMoves.checked) return;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      try {
+        if (!speechAudioContext) speechAudioContext = new AudioContext();
+        if (speechAudioContext.state !== "running") {
+          speechAudioContext.resume().then(
+            () => { speechUnlockError = null; },
+            (error) => { speechUnlockError = error; }
+          );
+        }
+      } catch (error) {
+        speechUnlockError = error;
+      }
+    }
+
+    function speakEngineMove(data) {
+      if (!speakMaiaMoves.checked || typeof data.speech_text !== "string") {
+        return Promise.resolve();
+      }
+      speechPlaybackQueue = speechPlaybackQueue.then(async () => {
+        if (!speakMaiaMoves.checked) return;
+        try {
+          const response = await fetch("/api/speech", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: data.speech_text })
+          });
+          if (!response.ok) await readResponse(response);
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) throw new Error("This browser does not support audio playback.");
+          if (!speechAudioContext) throw new Error("Tap the page to enable audio playback.");
+          if (speechUnlockError) {
+            throw new Error("Tap the page to enable audio playback.");
+          }
+          const audioData = await response.arrayBuffer();
+          const audioBuffer = await speechAudioContext.decodeAudioData(audioData);
+          if (speechAudioContext.state !== "running") {
+            throw new Error("Tap the page to enable audio playback.");
+          }
+          const source = speechAudioContext.createBufferSource();
+          source.buffer = audioBuffer;
+          source.connect(speechAudioContext.destination);
+          await new Promise((resolve) => {
+            source.addEventListener("ended", resolve, { once: true });
+            source.start();
+          });
+        } catch (error) {
+          status.textContent = `Maia's move was played, but speech playback failed: ${error.message}`;
+        }
+      });
+      return speechPlaybackQueue;
+    }
+
     function setVoiceBusy(busy) {
       voiceBusy = busy;
       input.disabled = gameEnded || busy;
@@ -401,6 +461,7 @@
         if (!data.game_over && !data.quit) {
           status.textContent = `Heard "${data.transcript}" as ${data.interpreted_uci}.`;
         }
+        await speakEngineMove(data);
       } catch (error) {
         status.textContent = error.message;
       } finally {
@@ -409,6 +470,7 @@
     }
 
     recordButton.addEventListener("click", async () => {
+      unlockSpeechPlayback();
       if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
         status.textContent = "Microphone access requires HTTPS with a trusted certificate. Open the secure PC address.";
         return;
@@ -462,6 +524,7 @@
 
     stopRecordingButton.addEventListener("click", () => {
       if (!recorder || !recording) return;
+      unlockSpeechPlayback();
       recording = false;
       setVoiceBusy(true);
       status.textContent = "Preparing the recording...";
@@ -499,6 +562,7 @@
 
     setup.addEventListener("submit", async (event) => {
       event.preventDefault();
+      unlockSpeechPlayback();
       startButton.disabled = true;
       colorSelect.disabled = true;
       maiaEloInput.disabled = true;
@@ -531,6 +595,7 @@
         } else {
           input.focus();
         }
+        await speakEngineMove(data);
       } catch (error) {
         status.textContent = error.message;
         setup.hidden = false;
@@ -544,6 +609,7 @@
 
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      unlockSpeechPlayback();
       if (waitingForEngine || gameEnded) return;
       const text = input.value.trim();
       if (!text) return;
@@ -577,6 +643,7 @@
         } else if (!data.game_over && !data.quit) {
           status.textContent = "";
         }
+        await speakEngineMove(data);
       } catch (error) {
         renderHistory(canonicalHistory);
         try {
@@ -596,6 +663,7 @@
     });
 
     goButton.addEventListener("click", async () => {
+      unlockSpeechPlayback();
       goButton.disabled = true;
       status.textContent = "Skipping the remaining think time...";
       try {

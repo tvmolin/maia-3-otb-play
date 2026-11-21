@@ -1,12 +1,15 @@
 import json
 import os
 import tempfile
+import wave
+from io import BytesIO
 from pathlib import Path
+from threading import Lock
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 import chess
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from werkzeug.exceptions import RequestEntityTooLarge
 
 from lichess_import import configured_importer
@@ -16,7 +19,10 @@ MAIA_ELO = 800
 PLAYER_ELO = 760
 MAX_AUDIO_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_TRANSCRIPT_CHARS = 500
+MAX_SPEECH_TEXT_CHARS = 120
 DEFAULT_OLLAMA_MODEL = "qwen2.5:7b"
+DEFAULT_PIPER_VOICE = "en_US-lessac-medium"
+RANK_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight")
 OLLAMA_GENERATE_URL = "http://127.0.0.1:11434/api/generate"
 OLLAMA_SYSTEM_PROMPT = """\
 Map the transcript to one move in the supplied legal_moves list. The list is the
@@ -85,6 +91,74 @@ def request_ollama_interpretation(transcript, board):
     return json.loads(payload["response"])
 
 
+def spoken_chess_move(board, move):
+    san = board.san(move)
+    if san.startswith("O-O-O"):
+        phrase = "Castle queenside"
+    elif san.startswith("O-O"):
+        phrase = "Castle kingside"
+    else:
+        piece_type = board.piece_type_at(move.from_square)
+        piece_name = chess.piece_name(piece_type)
+        destination_square = chess.square_name(move.to_square)
+        destination = (
+            f"{destination_square[0]} "
+            f"{RANK_WORDS[int(destination_square[1])]}"
+        )
+        ambiguous_moves = [
+            candidate
+            for candidate in board.legal_moves
+            if candidate != move
+            and candidate.to_square == move.to_square
+            and board.piece_type_at(candidate.from_square) == piece_type
+        ]
+        if ambiguous_moves:
+            origin_square = chess.square_name(move.from_square)
+            origin = f"{origin_square[0]} {RANK_WORDS[int(origin_square[1])]}"
+            phrase = f"{piece_name} from {origin} to {destination}"
+        else:
+            verb = "takes" if board.is_capture(move) else "to"
+            phrase = f"{piece_name} {verb} {destination}"
+        if move.promotion:
+            phrase += f", promoting to {chess.piece_name(move.promotion)}"
+
+    resulting_board = board.copy()
+    resulting_board.push(move)
+    if resulting_board.is_checkmate():
+        phrase += ", checkmate"
+    elif resulting_board.is_check():
+        phrase += ", check"
+    return f"{phrase}."
+
+
+def create_piper_synthesizer(model_path=None):
+    from piper import PiperVoice
+
+    if model_path is None:
+        model_path = os.environ.get("PIPER_MODEL")
+    if model_path is None:
+        voice_dir = Path(os.environ.get("LOCALAPPDATA", Path.home()))
+        model_path = voice_dir / "Maia-OTB" / "voices" / f"{DEFAULT_PIPER_VOICE}.onnx"
+
+    model_path = Path(model_path)
+    if not model_path.is_file():
+        raise FileNotFoundError(
+            f"Piper voice model was not found at {model_path}. "
+            "Download the configured voice as described in README.md."
+        )
+
+    voice = PiperVoice.load(str(model_path))
+    synthesis_lock = Lock()
+
+    def synthesize(text):
+        output = BytesIO()
+        with synthesis_lock, wave.open(output, "wb") as wav_file:
+            voice.synthesize_wav(text, wav_file)
+        return output.getvalue()
+
+    return synthesize
+
+
 def create_whisper_model():
     import ctranslate2
     from faster_whisper import WhisperModel
@@ -133,7 +207,13 @@ def configured_ssl_context():
     return ssl_cert, ssl_key
 
 
-def create_app(engine, board=None, lichess_importer=None, transcriber=None):
+def create_app(
+    engine,
+    board=None,
+    lichess_importer=None,
+    transcriber=None,
+    speech_synthesizer=None,
+):
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_AUDIO_UPLOAD_BYTES
     game = GameSession(
@@ -148,6 +228,7 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
     )
     app.config["CHESS_GAME"] = game
     whisper_model = transcriber
+    piper_synthesizer = speech_synthesizer
 
     @app.errorhandler(RequestEntityTooLarge)
     def request_too_large(_error):
@@ -175,7 +256,8 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
     def play_maia_turn():
         turn = game.choose_maia_move()
         game.wait_for_maia_think(turn.think_seconds)
-        return game.play_maia_move(turn)
+        speech_text = spoken_chess_move(game.board, turn.move)
+        return game.play_maia_move(turn), speech_text
 
     @app.get("/")
     def index():
@@ -194,6 +276,44 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
             if not game.is_game_over:
                 return jsonify(error="PGN is available when the game ends."), 409
             return jsonify(pgn=game.build_pgn(game.result))
+
+    @app.post("/api/speech")
+    def speech_audio():
+        nonlocal piper_synthesizer
+
+        payload = request.get_json(silent=True)
+        text = payload.get("text") if isinstance(payload, dict) else None
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or len(text) > MAX_SPEECH_TEXT_CHARS
+        ):
+            return jsonify(error="Send a short chess move phrase for speech."), 400
+
+        try:
+            if piper_synthesizer is None:
+                piper_synthesizer = create_piper_synthesizer()
+            audio = piper_synthesizer(text)
+        except (ImportError, OSError, RuntimeError, ValueError):
+            app.logger.exception("Local Piper could not synthesize the engine move.")
+            return (
+                jsonify(
+                    error=(
+                        "Local Piper speech is unavailable. Install piper-tts and "
+                        "download its voice model as described in README.md."
+                    )
+                ),
+                503,
+            )
+
+        if not isinstance(audio, bytes):
+            app.logger.error("Local Piper returned an invalid audio response.")
+            return jsonify(error="Local speech synthesis returned invalid audio."), 502
+        return Response(
+            audio,
+            mimetype="audio/wav",
+            headers={"Cache-Control": "no-store"},
+        )
 
     def transcribe_upload(audio_file):
         nonlocal whisper_model
@@ -395,9 +515,10 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
             return jsonify(error="Could not configure the engine for this game."), 503
 
         messages = []
+        speech_text = None
         if started_now and color == "black" and game.board.turn != game.player_color:
             try:
-                san = play_maia_turn()
+                san, speech_text = play_maia_turn()
                 messages = [{"role": "Engine", "text": san}]
             except Exception:
                 game.cancel_start()
@@ -406,7 +527,7 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
                     jsonify(error="The engine failed to respond; check the server console."),
                     503,
                 )
-        return game_state(messages=messages)
+        return game_state(messages=messages, speech_text=speech_text)
 
     @app.post("/api/new-game")
     def new_game():
@@ -450,11 +571,13 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
             return jsonify(error=str(error)), 400
 
         messages = []
+        speech_text = None
         if command["action"] == "move":
             messages.append({"role": "You", "text": command["san"]})
             if not game.is_game_over:
                 try:
-                    messages.append({"role": "Engine", "text": play_maia_turn()})
+                    san, speech_text = play_maia_turn()
+                    messages.append({"role": "Engine", "text": san})
                 except Exception:
                     game.undo_plies(1)
                     app.logger.exception("Failed to process the chess move.")
@@ -465,7 +588,8 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
         elif command["action"] == "undo" and not game.is_game_over:
             if game.board.turn != game.player_color:
                 try:
-                    messages.append({"role": "Engine", "text": play_maia_turn()})
+                    san, speech_text = play_maia_turn()
+                    messages.append({"role": "Engine", "text": san})
                 except Exception:
                     app.logger.exception("Maia failed to resume after undo.")
                     return (
@@ -491,6 +615,7 @@ def create_app(engine, board=None, lichess_importer=None, transcriber=None):
             action=command["action"],
             message=command["message"],
             messages=messages,
+            speech_text=speech_text,
             saved_pgn=saved_pgn.name if saved_pgn is not None else None,
         )
 

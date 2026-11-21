@@ -258,6 +258,36 @@ reply; there is no separate transcript review in this workflow. If speech is
 unclear, Ollama is unavailable, or its result is not legal, the app reports an
 error without changing the board so the player can repeat the move.
 
+### Local Maia speech output
+
+The chat page can speak each Maia move locally with Piper. It covers Maia's
+opening move when you play Black, replies to typed moves, and replies to spoken
+moves. The phone receives the generated WAV from this PC over the same local
+connection; audio and move text are not sent to a speech service. The
+**Speak Maia's moves** checkbox is enabled by default.
+
+The `piper-tts` Python package is installed with the project dependencies.
+Download the default English voice once while connected to the internet:
+
+```powershell
+$voiceDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\voices"
+New-Item -ItemType Directory -Force -Path $voiceDir | Out-Null
+.\.venv\Scripts\python.exe -m piper.download_voices `
+  --download-dir $voiceDir en_US-lessac-medium
+```
+
+The app loads `%LOCALAPPDATA%\Maia-OTB\voices\en_US-lessac-medium.onnx` on
+first playback. Set `PIPER_MODEL` before starting the app to use another
+downloaded `.onnx` voice file. Piper synthesizes on the PC using the CPU; it
+does not require CUDA. On iPhone, the game-start or move button unlocks browser
+audio playback. If the browser still blocks it, the page reports that playback
+needs a tap.
+
+Voice models have separate terms from Piper itself. Review the selected voice's
+model card and the [Piper voice licensing notes](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/LICENSING.md);
+the default Lessac voice is limited to research and exploration of speech
+technology and excludes commercial use.
+
 ### Secure phone microphone access
 
 Browsers require a secure context for microphone access, so

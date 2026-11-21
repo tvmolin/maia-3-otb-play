@@ -11,7 +11,12 @@ from unittest.mock import patch
 import chess
 
 from maia_game import GameSession
-from web_app import configured_ssl_context, create_app, request_ollama_interpretation
+from web_app import (
+    configured_ssl_context,
+    create_app,
+    request_ollama_interpretation,
+    spoken_chess_move,
+)
 
 
 class FakeEngine:
@@ -68,8 +73,60 @@ class WebAppTests(unittest.TestCase):
             ],
         )
         self.assertEqual(response.json["history"], response.json["messages"])
+        self.assertEqual(response.json["speech_text"], "pawn to e five.")
         wait.assert_called_once()
         self.assertAlmostEqual(wait.call_args.args[0], 3.0, delta=0.1)
+
+    def test_spoken_move_describes_castling_and_checkmate(self):
+        castle_board = chess.Board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
+        self.assertEqual(
+            spoken_chess_move(castle_board, castle_board.parse_san("O-O")),
+            "Castle kingside.",
+        )
+        self.assertEqual(
+            spoken_chess_move(castle_board, castle_board.parse_san("O-O-O")),
+            "Castle queenside.",
+        )
+
+        mate_board = chess.Board()
+        for move in ("f3", "e5", "g4"):
+            mate_board.push_san(move)
+        self.assertEqual(
+            spoken_chess_move(mate_board, mate_board.parse_san("Qh4#")),
+            "queen to h four, checkmate.",
+        )
+
+    def test_speech_endpoint_returns_audio_from_local_synthesizer(self):
+        spoken = []
+
+        def synthesize(text):
+            spoken.append(text)
+            return b"local wav data"
+
+        client = create_app(
+            FakeEngine(),
+            speech_synthesizer=synthesize,
+        ).test_client()
+        response = client.post(
+            "/api/speech",
+            json={"text": "Knight to f three."},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "audio/wav")
+        self.assertEqual(response.data, b"local wav data")
+        self.assertEqual(spoken, ["Knight to f three."])
+
+    def test_speech_endpoint_reports_missing_local_voice(self):
+        client = create_app(FakeEngine()).test_client()
+        with patch(
+            "web_app.create_piper_synthesizer",
+            side_effect=FileNotFoundError("voice missing"),
+        ):
+            response = client.post("/api/speech", json={"text": "Pawn to e four."})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("download its voice model", response.json["error"])
 
     def test_move_accepts_uci_notation(self):
         with patch.object(GameSession, "wait_for_maia_think"):
@@ -175,6 +232,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["transcript"], "knight f3")
         self.assertEqual(response.json["interpreted_uci"], "g1f3")
+        self.assertEqual(response.json["speech_text"], "pawn to e five.")
         self.assertEqual(
             response.json["messages"],
             [
@@ -302,6 +360,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["player_color"], "black")
         self.assertEqual(response.json["history"], [{"role": "Engine", "text": "e4"}])
+        self.assertEqual(response.json["speech_text"], "pawn to e four.")
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(game.board.turn, chess.BLACK)
 
@@ -315,6 +374,7 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["action"], "undo")
         self.assertEqual(response.json["history"], [{"role": "Engine", "text": "e4"}])
+        self.assertEqual(response.json["speech_text"], "pawn to e four.")
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(game.board.turn, chess.BLACK)
 
@@ -523,9 +583,11 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'id="pgn-fallback"', page.data)
         self.assertIn(b'id="record-button"', page.data)
         self.assertIn(b'id="stop-recording-button"', page.data)
+        self.assertIn(b'id="speak-maia-moves"', page.data)
         self.assertIn(b"Speak move", page.data)
         self.assertIn(b"Send move", page.data)
         self.assertIn(b'fetch("/api/voice-command"', page.data)
+        self.assertIn(b'fetch("/api/speech"', page.data)
         self.assertIn(b'function focusMoveInput()', page.data)
         self.assertIn(b'input.focus({ preventScroll: true })', page.data)
         self.assertIn(b'function scrollHistoryToBottom()', page.data)

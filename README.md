@@ -157,11 +157,37 @@ A system notification sound plays after Maia makes a move on Windows.
 The web interface runs as a separate application and leaves the terminal
 workflow intact. Both interfaces use the shared game logic in `maia_game.py`
 for engine setup, move validation, Maia's move selection and think-time, and
-PGN generation. Install the project dependencies, including Flask, if you have
-not already:
+PGN generation.
+
+On a new Windows PC, install [Git for Windows](https://git-scm.com/download/win)
+and [Python 3.12](https://www.python.org/downloads/windows/) with the Python
+launcher, then clone this repository copy (not the upstream Maia-3 repository):
+
+```powershell
+git clone https://github.com/tvmolin/maia-3-otb-play.git
+cd maia-3-otb-play
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+For an existing checkout, install or refresh the project dependencies with:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -e .
+```
+
+The chat app uses the Maia 79M checkpoint in local-files-only mode. Download it
+once on each new PC while connected to the internet:
+
+```powershell
+.\.venv\Scripts\python.exe -m maia3.cache --model maia3-79m
+```
+
+Run the chat API tests to verify the Python setup:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p test_web_app.py
 ```
 
 Start the web game from the repository root:
@@ -196,6 +222,18 @@ for the matching CUDA/cuDNN libraries. There is no automatic CPU fallback:
 if GPU initialization fails, the transcription API reports an error instead.
 faster-whisper decodes browser recordings with its bundled PyAV, so a separate
 FFmpeg installation is not needed.
+Install a current [NVIDIA driver](https://www.nvidia.com/Download/index.aspx)
+compatible with the GPU and CUDA-enabled PyTorch build used by Maia. Check that
+PyTorch sees the GPU with:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No CUDA GPU detected')"
+```
+
+If this reports `False`, install the matching Windows CUDA build of PyTorch
+using the [official PyTorch selector](https://pytorch.org/get-started/locally/)
+in this virtual environment. This is separate from the CUDA 12 cuBLAS and
+cuDNN 9 DLLs required by faster-whisper.
 
 ### Local chess phrase interpretation
 
@@ -227,11 +265,13 @@ Browsers require a secure context for microphone access, so
 
 For an iPhone on the same Wi-Fi, you can use a private local certificate
 authority instead of Tailscale. Install [mkcert](https://github.com/FiloSottile/mkcert)
-on Windows, then in PowerShell from the repository root set the PC's current
-LAN IP address and create a private CA, an HTTPS certificate, and a copy of
-only the public CA certificate for transfer to the phone:
+on Windows with WinGet, then open a new PowerShell window. From the repository
+root, set the PC's current LAN IP address and create a private CA, an HTTPS
+certificate, and a copy of only the public CA certificate for transfer to the
+phone:
 
 ```powershell
+winget install --id FiloSottile.mkcert --exact
 $certDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\certs"
 $phoneDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\iphone"
 $caDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\ca"
@@ -436,6 +476,9 @@ The app opens `http://127.0.0.1:5001` in the browser and listens on loopback
 only.
 
 ### Windows
+
+Install [Node.js LTS](https://nodejs.org/en/download/) (which includes npm)
+before building the frontend.
 
 Build the frontend once from the repository root:
 

@@ -106,6 +106,17 @@
       border-top: 1px solid #e6e6e6;
     }
 
+    #voice-controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 14px 14px;
+    }
+
+    #voice-controls[hidden] { display: none; }
+    #record-button, #stop-recording-button { min-height: 42px; padding: 8px 14px; }
+    #stop-recording-button { background: #666; }
+
     form[hidden] { display: none; }
 
     #setup label { font-weight: 600; }
@@ -130,7 +141,7 @@
       border-top: 1px solid #e6e6e6;
     }
 
-    input {
+    input, #move-input {
       min-width: 0;
       flex: 1;
       padding: 12px;
@@ -139,6 +150,8 @@
       font: inherit;
       font-size: 16px;
     }
+
+    #move-input { resize: vertical; }
 
     button {
       padding: 0 18px;
@@ -200,7 +213,7 @@
         <h1>Maia OTB Chess</h1>
         <button id="new-game-button" type="button" hidden>New Game</button>
       </div>
-      <p>Enter moves in SAN/UCI notation or commands: help, undo, resign, q.</p>
+      <p>Enter moves in SAN/UCI notation or commands, or record speech and review the transcript before sending.</p>
     </header>
     <form id="setup">
       <label for="player-color">Play as</label>
@@ -219,11 +232,15 @@
     <section id="history" aria-live="polite" aria-label="Move history"></section>
     <div id="status" role="status"></div>
     <form id="move-form" hidden>
-      <input id="move-input" name="text" type="text" enterkeyhint="send"
-             placeholder="Move or command (e.g. e4, undo, go)"
-             autocomplete="off" autocapitalize="off" required aria-label="Your move">
+      <textarea id="move-input" name="text" rows="2" enterkeyhint="send"
+                placeholder="Move or command (e.g. e4, undo, go)"
+                autocomplete="off" autocapitalize="off" required aria-label="Your move"></textarea>
       <button id="send-button" type="submit">Send</button>
     </form>
+    <div id="voice-controls" hidden>
+      <button id="record-button" type="button">Record speech</button>
+      <button id="stop-recording-button" type="button" hidden>Stop &amp; transcribe</button>
+    </div>
     <button id="help-button" type="button" hidden>Help</button>
     <button id="go-button" type="button" hidden>Go now</button>
     <button id="copy-pgn-button" type="button" hidden>Copy PGN</button>
@@ -240,6 +257,9 @@
     const form = document.querySelector("#move-form");
     const input = document.querySelector("#move-input");
     const button = document.querySelector("#send-button");
+    const voiceControls = document.querySelector("#voice-controls");
+    const recordButton = document.querySelector("#record-button");
+    const stopRecordingButton = document.querySelector("#stop-recording-button");
     const helpButton = document.querySelector("#help-button");
     const goButton = document.querySelector("#go-button");
     const copyPgnButton = document.querySelector("#copy-pgn-button");
@@ -248,6 +268,11 @@
     let waitingForEngine = false;
     let gameEnded = false;
     let canonicalHistory = [];
+    let voiceBusy = false;
+    let recording = false;
+    let recorder = null;
+    let recordingStream = null;
+    let recordingChunks = [];
 
     function scrollHistoryToBottom() {
       requestAnimationFrame(() => {
@@ -289,8 +314,10 @@
     function setWaitingForEngine(waiting) {
       waitingForEngine = waiting;
       historyElement.setAttribute("aria-busy", String(waiting));
-      input.disabled = gameEnded;
-      button.disabled = waiting || gameEnded;
+      input.disabled = gameEnded || voiceBusy;
+      button.disabled = waiting || gameEnded || voiceBusy;
+      recordButton.disabled = waiting || gameEnded || voiceBusy || recording;
+      stopRecordingButton.disabled = waiting || gameEnded || voiceBusy || !recording;
       goButton.hidden = !waiting || gameEnded;
       goButton.disabled = false;
       helpButton.hidden = !waiting || gameEnded;
@@ -304,6 +331,7 @@
       if (data.started) {
         setup.hidden = true;
         form.hidden = false;
+        voiceControls.hidden = false;
         newGameButton.hidden = false;
         colorSelect.value = data.player_color;
         maiaEloInput.value = data.maia_elo;
@@ -311,6 +339,7 @@
       } else if (data.new_game) {
         setup.hidden = false;
         form.hidden = true;
+        voiceControls.hidden = true;
         newGameButton.hidden = true;
         startButton.disabled = false;
         colorSelect.disabled = false;
@@ -340,6 +369,102 @@
       if (!response.ok) throw new Error(data.error || "Request failed.");
       return data;
     }
+
+    function setVoiceBusy(busy) {
+      voiceBusy = busy;
+      input.disabled = gameEnded || busy;
+      button.disabled = waitingForEngine || gameEnded || busy;
+      recordButton.disabled = waitingForEngine || gameEnded || busy || recording;
+      stopRecordingButton.disabled = waitingForEngine || gameEnded || busy || !recording;
+    }
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    async function transcribeRecording(blob) {
+      const audio = new FormData();
+      const extension = blob.type.includes("ogg") ? "ogg"
+        : blob.type.includes("mp4") ? "m4a" : "webm";
+      audio.append("audio", blob, `recording.${extension}`);
+      status.textContent = "Transcribing locally on this PC...";
+      try {
+        const response = await fetch("/api/transcribe", { method: "POST", body: audio });
+        const data = await readResponse(response);
+        input.value = data.text;
+        status.textContent = data.text
+          ? "Review the transcript, edit it if needed, then select Send."
+          : "No speech was detected. Record again or enter a move.";
+        input.focus();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        setVoiceBusy(false);
+      }
+    }
+
+    recordButton.addEventListener("click", async () => {
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        status.textContent = "Microphone access requires HTTPS with a trusted certificate. Open the secure PC address.";
+        return;
+      }
+      if (!window.MediaRecorder) {
+        status.textContent = "This browser does not support audio recording.";
+        return;
+      }
+
+      setVoiceBusy(true);
+      try {
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordingChunks = [];
+        const mimeType = ["audio/webm;codecs=opus", "audio/ogg;codecs=opus", "audio/mp4"]
+          .find((type) => MediaRecorder.isTypeSupported(type));
+        recorder = mimeType
+          ? new MediaRecorder(recordingStream, { mimeType })
+          : new MediaRecorder(recordingStream);
+        recorder.addEventListener("dataavailable", (event) => {
+          if (event.data.size) recordingChunks.push(event.data);
+        });
+        recorder.addEventListener("stop", () => {
+          recordingStream.getTracks().forEach((track) => track.stop());
+          recordingStream = null;
+          recording = false;
+          stopRecordingButton.hidden = true;
+          recordButton.hidden = false;
+          const blob = new Blob(recordingChunks, { type: recorder.mimeType });
+          if (blob.size) {
+            transcribeRecording(blob);
+          } else {
+            status.textContent = "The recording was empty. Try recording again.";
+            setVoiceBusy(false);
+          }
+        });
+        recorder.start();
+        recording = true;
+        recordButton.hidden = true;
+        stopRecordingButton.hidden = false;
+        status.textContent = "Recording... select Stop & transcribe when finished.";
+        setVoiceBusy(false);
+      } catch (error) {
+        if (recordingStream) {
+          recordingStream.getTracks().forEach((track) => track.stop());
+          recordingStream = null;
+        }
+        status.textContent = error.message || "Microphone access was not granted.";
+        setVoiceBusy(false);
+      }
+    });
+
+    stopRecordingButton.addEventListener("click", () => {
+      if (!recorder || !recording) return;
+      recording = false;
+      setVoiceBusy(true);
+      status.textContent = "Preparing the recording...";
+      recorder.stop();
+    });
 
     function focusMoveInput() {
       if (form.hidden || input.disabled) return;

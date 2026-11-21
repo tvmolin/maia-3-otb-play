@@ -175,10 +175,107 @@ local IPv4 address with `ipconfig`, then open `http://<PC-IP>:5000` in a phone
 browser on the same Wi-Fi network. Wait until the server says it is starting
 before connecting; it loads Maia first.
 
-If Windows Firewall blocks the connection, open PowerShell as Administrator
-and add an inbound rule for port 5000 on private networks only. Restricting it
-to the local subnet allows devices on your Wi-Fi to connect without opening the
-port to the public internet:
+### Local Whisper speech input
+
+The chat page can record a short utterance, send it to this PC for local
+transcription, and place the editable transcript in the move field. Review it
+before selecting **Send**; speech is not translated into chess moves. The
+recording is uploaded only to this PC. Whisper is loaded on the first
+transcription request, and the default `small` model is downloaded and cached
+locally on first use; that initial model download requires internet access.
+Set `WHISPER_MODEL` before starting the app to choose another
+[faster-whisper model](https://github.com/SYSTRAN/faster-whisper#model-sizes).
+Recordings larger than 25 MB are rejected.
+
+The app explicitly runs Whisper on the NVIDIA GPU and selects the fastest
+supported CUDA compute type, preferring FP16 and then INT8. The GTX 1080 Ti
+does not report efficient FP16 support to CTranslate2; the tested build runs
+it as `int8_float32` on CUDA. On Windows, faster-whisper also needs CUDA 12
+cuBLAS and cuDNN 9 DLLs available on `PATH`; the Python package alone does not
+install these system libraries. Follow the
+[faster-whisper GPU setup instructions](https://github.com/SYSTRAN/faster-whisper#gpu)
+for the matching CUDA/cuDNN libraries. There is no automatic CPU fallback:
+if GPU initialization fails, the transcription API reports an error instead.
+faster-whisper decodes browser recordings with its bundled PyAV, so a separate
+FFmpeg installation is not needed.
+
+### Secure phone microphone access
+
+Browsers require a secure context for microphone access, so
+`http://<PC-IP>:5000` will not allow recording from the phone.
+
+For an iPhone on the same Wi-Fi, you can use a private local certificate
+authority instead of Tailscale. Install [mkcert](https://github.com/FiloSottile/mkcert)
+on Windows, then in PowerShell from the repository root set the PC's current
+LAN IP address and create a private CA, an HTTPS certificate, and a copy of
+only the public CA certificate for transfer to the phone:
+
+```powershell
+$certDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\certs"
+$phoneDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\iphone"
+$caDir = Join-Path $env:LOCALAPPDATA "Maia-OTB\ca"
+New-Item -ItemType Directory -Force -Path $certDir, $phoneDir, $caDir | Out-Null
+$env:CAROOT = $caDir
+$env:TRUST_STORES = "system"
+mkcert -install
+mkcert -cert-file "$certDir\server.pem" -key-file "$certDir\server-key.pem" 192.168.1.50 localhost 127.0.0.1
+Copy-Item "$caDir\rootCA.pem" "$phoneDir\rootCA.pem"
+```
+
+Replace `192.168.1.50` with the PC's LAN IP from `ipconfig`. The phone and PC
+must be on the same trusted Wi-Fi network; reserve the IP in the router or
+reissue the certificate if the address changes. Once those certificate files
+exist, the app automatically uses them on startup; just start the app as usual:
+
+```powershell
+.\.venv\Scripts\python.exe .\web_app.py
+```
+
+To transfer the public CA certificate over the local network, stop the chat
+server if it is running, then run this temporary file server in PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe -m http.server 5000 --directory "$phoneDir" --bind 0.0.0.0
+```
+
+In Safari on the iPhone, open `http://<PC-LAN-IP>:5000/rootCA.cer`, download the
+certificate, then stop the temporary server with Ctrl+C. Alternatively, move
+only `%LOCALAPPDATA%\Maia-OTB\iphone\rootCA.cer` to the phone using iCloud Drive.
+Do **not** copy or share `rootCA-key.pem` or `server-key.pem`. Open the CA
+certificate on the iPhone to install its configuration profile, then go to
+**Settings > General > About > Certificate Trust Settings** and enable full
+trust for the new root certificate. Open
+`https://<PC-LAN-IP>:5000` in Safari or Firefox on the iPhone. The local CA's
+private key remains on the PC; remove the trusted root from the iPhone and
+Windows certificate store when you no longer need this setup.
+
+Alternatively, install Tailscale on the PC and phone, sign both into the same
+tailnet, enable MagicDNS and HTTPS certificates in the tailnet DNS settings,
+and proxy the app through Tailscale Serve:
+
+```powershell
+$env:MAIA_HOST = "127.0.0.1"
+.\.venv\Scripts\python.exe .\web_app.py
+```
+
+In another PowerShell window:
+
+```powershell
+tailscale serve --bg http://127.0.0.1:5000
+tailscale serve status
+```
+
+Open the displayed `https://<PC-name>.<tailnet>.ts.net` address on the phone
+with Tailscale connected. Tailscale HTTPS certificates publicly log the PC's
+machine name; avoid a name you do not want public. Do not expose port 5000 to
+the internet or use Tailscale Funnel for this app.
+
+For direct plain-HTTP access by PC IP only (which does not enable phone
+recording), if Windows Firewall blocks the connection, open PowerShell as
+Administrator and add an inbound rule for port 5000 on private networks only.
+Restricting it to the local subnet allows devices on your Wi-Fi to connect
+without opening the port to the public internet. This rule is not needed for
+the loopback/Tailscale HTTPS setup above:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Maia 3 local web app (TCP 5000)" `

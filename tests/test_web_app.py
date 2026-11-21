@@ -1,3 +1,5 @@
+from io import BytesIO
+import tempfile
 import unittest
 from pathlib import Path
 from threading import Event, Thread
@@ -7,7 +9,7 @@ from unittest.mock import patch
 import chess
 
 from maia_game import GameSession
-from web_app import create_app
+from web_app import configured_ssl_context, create_app
 
 
 class FakeEngine:
@@ -28,6 +30,22 @@ class FakeEngine:
             move=board.parse_san(move),
             info={"string": "policy_entropy 0.5"},
         )
+
+
+class FakeWhisper:
+    def __init__(self):
+        self.audio_path = None
+        self.beam_size = None
+
+    def transcribe(self, audio_path, beam_size):
+        self.audio_path = Path(audio_path)
+        self.beam_size = beam_size
+        return iter(
+            [
+                SimpleNamespace(text=" knight "),
+                SimpleNamespace(text=" f3 "),
+            ]
+        ), None
 
 
 class WebAppTests(unittest.TestCase):
@@ -92,6 +110,59 @@ class WebAppTests(unittest.TestCase):
         response = self.app.post("/api/move", json={})
 
         self.assertEqual(response.status_code, 400)
+
+    def test_transcribe_returns_local_whisper_text(self):
+        transcriber = FakeWhisper()
+        client = create_app(FakeEngine(), transcriber=transcriber).test_client()
+
+        response = client.post(
+            "/api/transcribe",
+            data={"audio": (BytesIO(b"local test audio"), "recording.webm", "audio/webm")},
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["text"], "knight f3")
+        self.assertEqual(transcriber.beam_size, 5)
+        self.assertFalse(transcriber.audio_path.exists())
+
+    def test_transcribe_rejects_missing_or_unsupported_audio(self):
+        client = create_app(FakeEngine(), transcriber=FakeWhisper()).test_client()
+
+        missing = client.post("/api/transcribe", data={})
+        unsupported = client.post(
+            "/api/transcribe",
+            data={"audio": (BytesIO(b"not audio"), "recording.txt", "text/plain")},
+        )
+
+        self.assertEqual(missing.status_code, 400)
+        self.assertEqual(unsupported.status_code, 415)
+
+    def test_transcribe_reports_gpu_initialization_failure(self):
+        client = create_app(FakeEngine()).test_client()
+        with patch("web_app.create_whisper_model", side_effect=RuntimeError("CUDA missing")):
+            response = client.post(
+                "/api/transcribe",
+                data={"audio": (BytesIO(b"local test audio"), "recording.webm", "audio/webm")},
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("GPU", response.json["error"])
+
+    def test_https_certificate_is_auto_detected_for_local_app_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cert_dir = Path(directory) / "Maia-OTB" / "certs"
+            cert_dir.mkdir(parents=True)
+            cert_path = cert_dir / "server.pem"
+            key_path = cert_dir / "server-key.pem"
+            cert_path.write_text("test certificate", encoding="utf-8")
+            key_path.write_text("test key", encoding="utf-8")
+
+            with patch.dict("os.environ", {"LOCALAPPDATA": directory}, clear=True):
+                self.assertEqual(
+                    configured_ssl_context(),
+                    (str(cert_path), str(key_path)),
+                )
 
     def test_selecting_black_plays_maias_opening_move(self):
         client = create_app(FakeEngine(move="e4")).test_client()
@@ -321,6 +392,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'id="player-elo"', page.data)
         self.assertIn(b'id="copy-pgn-button"', page.data)
         self.assertIn(b'id="pgn-fallback"', page.data)
+        self.assertIn(b'id="record-button"', page.data)
+        self.assertIn(b'id="stop-recording-button"', page.data)
+        self.assertIn(b'fetch("/api/transcribe"', page.data)
+        self.assertIn(b"Review the transcript, edit it if needed, then select Send.", page.data)
         self.assertIn(b'function focusMoveInput()', page.data)
         self.assertIn(b'input.focus({ preventScroll: true })', page.data)
         self.assertIn(b'function scrollHistoryToBottom()', page.data)

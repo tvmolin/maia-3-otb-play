@@ -19,6 +19,8 @@ dependencies = [
   "python-chess",
   "python-dotenv>=1.0,<2",
   "torch",
+  "faster-whisper>=1.1,<2",
+  "av>=11,<19",
 ]
 
 [project.urls]

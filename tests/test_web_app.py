@@ -1,15 +1,17 @@
+import json
 from io import BytesIO
 import tempfile
 import unittest
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
+from urllib.error import URLError
 from unittest.mock import patch
 
 import chess
 
 from maia_game import GameSession
-from web_app import configured_ssl_context, create_app
+from web_app import configured_ssl_context, create_app, request_ollama_interpretation
 
 
 class FakeEngine:
@@ -148,6 +150,133 @@ class WebAppTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 503)
         self.assertIn("GPU", response.json["error"])
+
+    def test_voice_command_interprets_and_uses_existing_engine_flow(self):
+        transcriber = FakeWhisper()
+        client = create_app(FakeEngine(), transcriber=transcriber).test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        with patch.object(GameSession, "wait_for_maia_think") as wait, patch(
+            "web_app.request_ollama_interpretation",
+            return_value={"status": "move", "uci": "g1f3"},
+        ) as interpret:
+            response = client.post(
+                "/api/voice-command",
+                data={
+                    "audio": (
+                        BytesIO(b"local test audio"),
+                        "recording.webm",
+                        "audio/webm",
+                    )
+                },
+                content_type="multipart/form-data",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["transcript"], "knight f3")
+        self.assertEqual(response.json["interpreted_uci"], "g1f3")
+        self.assertEqual(
+            response.json["messages"],
+            [
+                {"role": "You", "text": "Nf3"},
+                {"role": "Engine", "text": "e5"},
+            ],
+        )
+        interpret.assert_called_once()
+        self.assertEqual(interpret.call_args.args[0], "knight f3")
+        wait.assert_called_once()
+
+    def test_voice_command_rejects_ambiguous_or_illegal_interpretations(self):
+        for interpretation in (
+            {"status": "clarify", "question": "Which knight?"},
+            {"status": "move", "uci": "e2e5"},
+        ):
+            with self.subTest(interpretation=interpretation):
+                client = create_app(
+                    FakeEngine(),
+                    transcriber=FakeWhisper(),
+                ).test_client()
+                client.post("/api/start", json={"color": "white"})
+
+                with patch(
+                    "web_app.request_ollama_interpretation",
+                    return_value=interpretation,
+                ):
+                    response = client.post(
+                        "/api/voice-command",
+                        data={
+                            "audio": (
+                                BytesIO(b"local test audio"),
+                                "recording.webm",
+                                "audio/webm",
+                            )
+                        },
+                    )
+
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(
+                    client.application.config["CHESS_GAME"].history,
+                    [],
+                )
+                self.assertEqual(
+                    len(client.application.config["CHESS_GAME"].board.move_stack),
+                    0,
+                )
+
+    def test_voice_command_reports_ollama_unavailable_without_playing(self):
+        client = create_app(
+            FakeEngine(),
+            transcriber=FakeWhisper(),
+        ).test_client()
+        client.post("/api/start", json={"color": "white"})
+
+        with patch(
+            "web_app.request_ollama_interpretation",
+            side_effect=URLError("Ollama is not running"),
+        ):
+            response = client.post(
+                "/api/voice-command",
+                data={
+                    "audio": (
+                        BytesIO(b"local test audio"),
+                        "recording.webm",
+                        "audio/webm",
+                    )
+                },
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("Start Ollama", response.json["error"])
+        self.assertEqual(client.application.config["CHESS_GAME"].history, [])
+
+    def test_ollama_request_is_local_and_contains_legal_candidates(self):
+        model_response = {
+            "response": json.dumps({"status": "move", "uci": "e2e4"})
+        }
+        with patch(
+            "web_app.urlopen",
+            return_value=BytesIO(json.dumps(model_response).encode("utf-8")),
+        ) as open_url, patch.dict("os.environ", {"OLLAMA_MODEL": "qwen2.5:7b"}):
+            interpretation = request_ollama_interpretation(
+                "pawn to e4",
+                chess.Board(),
+            )
+
+        self.assertEqual(interpretation, {"status": "move", "uci": "e2e4"})
+        ollama_request = open_url.call_args.args[0]
+        self.assertEqual(
+            ollama_request.full_url,
+            "http://127.0.0.1:11434/api/generate",
+        )
+        request_body = json.loads(ollama_request.data)
+        prompt = json.loads(request_body["prompt"])
+        self.assertEqual(request_body["model"], "qwen2.5:7b")
+        self.assertTrue(request_body["format"]["additionalProperties"] is False)
+        self.assertIn(
+            {"uci": "e2e4", "san": "e4"},
+            prompt["legal_moves"],
+        )
+        self.assertIn("untrusted data", request_body["system"])
 
     def test_https_certificate_is_auto_detected_for_local_app_data(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -394,8 +523,9 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'id="pgn-fallback"', page.data)
         self.assertIn(b'id="record-button"', page.data)
         self.assertIn(b'id="stop-recording-button"', page.data)
-        self.assertIn(b'fetch("/api/transcribe"', page.data)
-        self.assertIn(b"Review the transcript, edit it if needed, then select Send.", page.data)
+        self.assertIn(b"Speak move", page.data)
+        self.assertIn(b"Send move", page.data)
+        self.assertIn(b'fetch("/api/voice-command"', page.data)
         self.assertIn(b'function focusMoveInput()', page.data)
         self.assertIn(b'input.focus({ preventScroll: true })', page.data)
         self.assertIn(b'function scrollHistoryToBottom()', page.data)

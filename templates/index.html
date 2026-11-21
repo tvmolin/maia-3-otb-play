@@ -213,7 +213,7 @@
         <h1>Maia OTB Chess</h1>
         <button id="new-game-button" type="button" hidden>New Game</button>
       </div>
-      <p>Enter moves in SAN/UCI notation or commands, or record speech and review the transcript before sending.</p>
+      <p>Enter moves in SAN/UCI notation or commands, or speak a move for local interpretation.</p>
     </header>
     <form id="setup">
       <label for="player-color">Play as</label>
@@ -238,8 +238,8 @@
       <button id="send-button" type="submit">Send</button>
     </form>
     <div id="voice-controls" hidden>
-      <button id="record-button" type="button">Record speech</button>
-      <button id="stop-recording-button" type="button" hidden>Stop &amp; transcribe</button>
+      <button id="record-button" type="button">Speak move</button>
+      <button id="stop-recording-button" type="button" hidden>Send move</button>
     </div>
     <button id="help-button" type="button" hidden>Help</button>
     <button id="go-button" type="button" hidden>Go now</button>
@@ -321,7 +321,7 @@
       goButton.hidden = !waiting || gameEnded;
       goButton.disabled = false;
       helpButton.hidden = !waiting || gameEnded;
-      newGameButton.disabled = waiting;
+      newGameButton.disabled = waiting || voiceBusy;
     }
 
     function renderState(data) {
@@ -376,6 +376,7 @@
       button.disabled = waitingForEngine || gameEnded || busy;
       recordButton.disabled = waitingForEngine || gameEnded || busy || recording;
       stopRecordingButton.disabled = waitingForEngine || gameEnded || busy || !recording;
+      newGameButton.disabled = waitingForEngine || busy;
     }
 
     input.addEventListener("keydown", (event) => {
@@ -385,20 +386,21 @@
       }
     });
 
-    async function transcribeRecording(blob) {
+    async function sendVoiceMove(blob) {
       const audio = new FormData();
       const extension = blob.type.includes("ogg") ? "ogg"
         : blob.type.includes("mp4") ? "m4a" : "webm";
       audio.append("audio", blob, `recording.${extension}`);
-      status.textContent = "Transcribing locally on this PC...";
+      setVoiceBusy(true);
+      status.textContent = "Transcribing and interpreting locally, then sending the move...";
       try {
-        const response = await fetch("/api/transcribe", { method: "POST", body: audio });
+        const response = await fetch("/api/voice-command", { method: "POST", body: audio });
         const data = await readResponse(response);
-        input.value = data.text;
-        status.textContent = data.text
-          ? "Review the transcript, edit it if needed, then select Send."
-          : "No speech was detected. Record again or enter a move.";
-        input.focus();
+        renderState(data);
+        setWaitingForEngine(false);
+        if (!data.game_over && !data.quit) {
+          status.textContent = `Heard "${data.transcript}" as ${data.interpreted_uci}.`;
+        }
       } catch (error) {
         status.textContent = error.message;
       } finally {
@@ -436,9 +438,9 @@
           recordButton.hidden = false;
           const blob = new Blob(recordingChunks, { type: recorder.mimeType });
           if (blob.size) {
-            transcribeRecording(blob);
+            sendVoiceMove(blob);
           } else {
-            status.textContent = "The recording was empty. Try recording again.";
+            status.textContent = "The recording was empty. Please repeat the move.";
             setVoiceBusy(false);
           }
         });
@@ -446,7 +448,7 @@
         recording = true;
         recordButton.hidden = true;
         stopRecordingButton.hidden = false;
-        status.textContent = "Recording... select Stop & transcribe when finished.";
+        status.textContent = "Recording... tap Send move when finished.";
         setVoiceBusy(false);
       } catch (error) {
         if (recordingStream) {

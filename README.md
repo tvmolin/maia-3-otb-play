@@ -177,12 +177,10 @@ before connecting; it loads Maia first.
 
 ### Local Whisper speech input
 
-The chat page can record a short utterance, send it to this PC for local
-transcription, and place the editable transcript in the move field. Review it
-before selecting **Send**; speech is not translated into chess moves. The
-recording is uploaded only to this PC. Whisper is loaded on the first
-transcription request, and the default `small` model is downloaded and cached
-locally on first use; that initial model download requires internet access.
+The chat page can record a spoken move and process it entirely on this PC.
+Whisper transcribes the recording; the default `small` model is downloaded and
+cached locally on first use, which requires internet access. The recording is
+uploaded only to this PC.
 Set `WHISPER_MODEL` before starting the app to choose another
 [faster-whisper model](https://github.com/SYSTRAN/faster-whisper#model-sizes).
 Recordings larger than 25 MB are rejected.
@@ -198,6 +196,29 @@ for the matching CUDA/cuDNN libraries. There is no automatic CPU fallback:
 if GPU initialization fails, the transcription API reports an error instead.
 faster-whisper decodes browser recordings with its bundled PyAV, so a separate
 FFmpeg installation is not needed.
+
+### Local chess phrase interpretation
+
+Install Ollama and download the selected local model once:
+
+```powershell
+winget install --id Ollama.Ollama --exact
+ollama pull qwen2.5:7b
+```
+
+Ollama must be running locally at `127.0.0.1:11434`; model downloads require
+internet access, but move transcripts and board positions are sent only to
+that local Ollama service. Set `OLLAMA_MODEL` before starting the app to use a
+different model already installed in Ollama.
+
+After starting a game, tap **Speak move** to record. Tap **Send move** to stop
+recording and submit it: Whisper transcribes, Ollama interprets the phrase
+using the current position and its legal moves, and the app validates the UCI
+result before passing it through the normal command and engine flow. A
+successful interpretation immediately commits the move and requests Maia's
+reply; there is no separate transcript review in this workflow. If speech is
+unclear, Ollama is unavailable, or its result is not legal, the app reports an
+error without changing the board so the player can repeat the move.
 
 ### Secure phone microphone access
 

@@ -276,7 +276,6 @@
     let recordingStream = null;
     let recordingChunks = [];
     let speechAudioContext = null;
-    let speechUnlockError = null;
     let speechPlaybackQueue = Promise.resolve();
 
     function scrollHistoryToBottom() {
@@ -382,13 +381,12 @@
       try {
         if (!speechAudioContext) speechAudioContext = new AudioContext();
         if (speechAudioContext.state !== "running") {
-          speechAudioContext.resume().then(
-            () => { speechUnlockError = null; },
-            (error) => { speechUnlockError = error; }
-          );
+          speechAudioContext.resume().catch((error) => {
+            status.textContent = `Audio playback could not be enabled: ${error.message}`;
+          });
         }
       } catch (error) {
-        speechUnlockError = error;
+        status.textContent = `Audio playback could not be enabled: ${error.message}`;
       }
     }
 
@@ -408,9 +406,6 @@
           const AudioContext = window.AudioContext || window.webkitAudioContext;
           if (!AudioContext) throw new Error("This browser does not support audio playback.");
           if (!speechAudioContext) throw new Error("Tap the page to enable audio playback.");
-          if (speechUnlockError) {
-            throw new Error("Tap the page to enable audio playback.");
-          }
           const audioData = await response.arrayBuffer();
           const audioBuffer = await speechAudioContext.decodeAudioData(audioData);
           if (speechAudioContext.state !== "running") {

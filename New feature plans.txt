@@ -2,8 +2,3 @@
 
 
 
-
-Speech to text and TTS project:
-1. Speech-to-Text (STT): Whisper
-2. Move interpretation (spoken text → UCI): Ollama
-4. Text-to-Speech (TTS): Piper TTS

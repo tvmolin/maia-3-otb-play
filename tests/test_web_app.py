@@ -96,6 +96,13 @@ class WebAppTests(unittest.TestCase):
             "queen to h four, checkmate.",
         )
 
+    def test_spoken_capture_includes_piece_and_destination(self):
+        board = chess.Board("7k/8/2n5/4P3/8/8/7P/K7 b - - 0 1")
+        self.assertEqual(
+            spoken_chess_move(board, board.parse_san("Nxe5")),
+            "knight takes e five.",
+        )
+
     def test_speech_endpoint_returns_audio_from_local_synthesizer(self):
         spoken = []
 

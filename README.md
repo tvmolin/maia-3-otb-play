@@ -219,7 +219,37 @@ $env:CAROOT = $caDir
 $env:TRUST_STORES = "system"
 mkcert -install
 mkcert -cert-file "$certDir\server.pem" -key-file "$certDir\server-key.pem" 192.168.1.50 localhost 127.0.0.1
-Copy-Item "$caDir\rootCA.pem" "$phoneDir\rootCA.pem"
+$env:MAIA_CA_DER = Join-Path $phoneDir "rootCA.cer"
+certutil.exe -decode "$caDir\rootCA.pem" $env:MAIA_CA_DER
+$env:MAIA_PROFILE_PATH = Join-Path $phoneDir "Maia-OTB-Local-CA.mobileconfig"
+@'
+import os
+import plistlib
+import uuid
+from pathlib import Path
+
+certificate = Path(os.environ["MAIA_CA_DER"]).read_bytes()
+profile = {
+    "PayloadContent": [{
+        "PayloadContent": certificate,
+        "PayloadDisplayName": "Maia OTB Local HTTPS CA",
+        "PayloadIdentifier": "local.maiaotb.certificate-authority",
+        "PayloadType": "com.apple.security.root",
+        "PayloadUUID": str(uuid.uuid4()).upper(),
+        "PayloadVersion": 1,
+    }],
+    "PayloadDisplayName": "Maia OTB Local HTTPS CA",
+    "PayloadIdentifier": "local.maiaotb.https",
+    "PayloadOrganization": "Local development on this PC",
+    "PayloadRemovalDisallowed": False,
+    "PayloadType": "Configuration",
+    "PayloadUUID": str(uuid.uuid4()).upper(),
+    "PayloadVersion": 1,
+}
+Path(os.environ["MAIA_PROFILE_PATH"]).write_bytes(
+    plistlib.dumps(profile, fmt=plistlib.FMT_XML)
+)
+'@ | .\.venv\Scripts\python.exe -
 ```
 
 Replace `192.168.1.50` with the PC's LAN IP from `ipconfig`. The phone and PC
@@ -231,20 +261,42 @@ exist, the app automatically uses them on startup; just start the app as usual:
 .\.venv\Scripts\python.exe .\web_app.py
 ```
 
-To transfer the public CA certificate over the local network, stop the chat
-server if it is running, then run this temporary file server in PowerShell:
+To transfer the public CA profile over the local network, stop the chat server
+if it is running, then run this temporary profile server in PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe -m http.server 5000 --directory "$phoneDir" --bind 0.0.0.0
+$env:PROFILE_PATH = Join-Path $phoneDir "Maia-OTB-Local-CA.mobileconfig"
+@'
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+import os
+
+profile = Path(os.environ["PROFILE_PATH"]).read_bytes()
+
+class ProfileHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path != "/Maia-OTB-Local-CA.mobileconfig":
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-apple-aspen-config")
+        self.send_header("Content-Length", str(len(profile)))
+        self.end_headers()
+        self.wfile.write(profile)
+
+ThreadingHTTPServer(("0.0.0.0", 5000), ProfileHandler).serve_forever()
+'@ | .\.venv\Scripts\python.exe -
 ```
 
-In Safari on the iPhone, open `http://<PC-LAN-IP>:5000/rootCA.cer`, download the
-certificate, then stop the temporary server with Ctrl+C. Alternatively, move
-only `%LOCALAPPDATA%\Maia-OTB\iphone\rootCA.cer` to the phone using iCloud Drive.
-Do **not** copy or share `rootCA-key.pem` or `server-key.pem`. Open the CA
-certificate on the iPhone to install its configuration profile, then go to
-**Settings > General > About > Certificate Trust Settings** and enable full
-trust for the new root certificate. Open
+In Safari on the iPhone, open
+`http://<PC-LAN-IP>:5000/Maia-OTB-Local-CA.mobileconfig`, download the profile,
+then stop the temporary server with Ctrl+C. In the iPhone Files app, open
+Downloads and tap the `.mobileconfig` file. Install the profile from Settings
+when prompted. Alternatively, transfer only
+`%LOCALAPPDATA%\Maia-OTB\iphone\Maia-OTB-Local-CA.mobileconfig` to the phone
+using iCloud Drive. Do **not** copy or share `rootCA-key.pem` or
+`server-key.pem`. Then go to **Settings > General > About > Certificate Trust
+Settings** and enable full trust for the new root certificate. Open
 `https://<PC-LAN-IP>:5000` in Safari or Firefox on the iPhone. The local CA's
 private key remains on the PC; remove the trusted root from the iPhone and
 Windows certificate store when you no longer need this setup.

@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#14171b">
-  <title>Player profile - Chess ladder</title>
+  <title>{{ rating_label ~ " profile" if single_category else "Player profile" }} - Chess ladder</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/main.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='chessground/assets/style.css') }}">
 </head>
@@ -15,6 +15,8 @@
   <script>
     window.__PROFILE_DATA__ = {{ {
       "category": category,
+      "ratingLabel": rating_label|default(none),
+      "singleCategory": single_category|default(false),
       "playerElo": player_elo,
       "matches": matches|list,
       "colorStats": color_stats,

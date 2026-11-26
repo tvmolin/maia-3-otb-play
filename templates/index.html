@@ -1,19 +1,22 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f5f5f5">
   <title>Maia OTB Chess</title>
   <style>
     :root {
-      color-scheme: light;
+      color-scheme: dark;
       font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      color: #202124;
-      background: #f5f5f5;
+      color: #edf2eb;
+      background: #111713;
     }
 
-    * { box-sizing: border-box; }
+    * {
+      box-sizing: border-box;
+    }
 
     body {
       margin: 0;
@@ -21,6 +24,10 @@
       display: flex;
       justify-content: center;
       padding: 20px 12px;
+      background:
+        radial-gradient(ellipse at 18% 0%, #31412a55, transparent 38rem),
+        radial-gradient(ellipse at 100% 80%, #173c3244, transparent 34rem),
+        #111713;
     }
 
     main {
@@ -29,15 +36,15 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
-      background: white;
-      border: 1px solid #e6e6e6;
+      background: linear-gradient(145deg, #202a24, #19211d);
+      border: 1px solid #34443a;
       border-radius: 14px;
-      box-shadow: 0 4px 18px #0000000d;
+      box-shadow: 0 12px 32px #0003, inset 0 1px #ffffff08;
     }
 
     header {
       padding: 18px 20px;
-      border-bottom: 1px solid #e6e6e6;
+      border-bottom: 1px solid #34443a;
     }
 
     .header-row {
@@ -47,10 +54,34 @@
       gap: 12px;
     }
 
-    h1 { margin: 0; font-size: 1.15rem; }
-    header p { margin: 5px 0 0; color: #666; font-size: .9rem; }
-    #new-game-button { padding: 9px 12px; }
-    #new-game-button[hidden] { display: none; }
+    h1 {
+      margin: 0;
+      font-size: 1.15rem;
+    }
+
+    header p {
+      margin: 5px 0 0;
+      color: #a4b2a7;
+      font-size: .9rem;
+    }
+
+    #new-game-button {
+      padding: 9px 12px;
+    }
+
+    #new-game-button[hidden] {
+      display: none;
+    }
+
+    #profile-link {
+      color: #b6e36a;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    #profile-link:hover {
+      text-decoration: underline;
+    }
 
     #history {
       flex: 1;
@@ -78,21 +109,22 @@
 
     .You {
       align-self: flex-end;
-      background: #464feb;
-      color: white;
+      background: #34452e;
+      color: #edf2eb;
       border-bottom-right-radius: 4px;
     }
 
     .Engine {
       align-self: flex-start;
-      background: #f0f1f3;
+      background: #26332b;
+      color: #edf2eb;
       border-bottom-left-radius: 4px;
     }
 
     #status {
       min-height: 1.4em;
       padding: 0 18px 8px;
-      color: #666;
+      color: #a4b2a7;
       font-size: .85rem;
       white-space: pre-line;
     }
@@ -103,138 +135,223 @@
       align-items: center;
       gap: 10px;
       padding: 14px;
-      border-top: 1px solid #e6e6e6;
+      border-top: 1px solid #34443a;
+      background: #19211d;
+    }
+
+    #setup[hidden] {
+      display: none;
     }
 
     #voice-controls {
       display: flex;
-      justify-content: flex-end;
+      align-items: center;
+      justify-content: space-between;
       gap: 10px;
       padding: 0 14px 14px;
     }
 
-    #voice-controls[hidden] { display: none; }
-    #record-button, #stop-recording-button { min-height: 42px; padding: 8px 14px; }
-    #stop-recording-button { background: #666; }
+    #voice-controls[hidden] {
+      display: none;
+    }
 
-    form[hidden] { display: none; }
+    #record-button,
+    #stop-recording-button {
+      flex: 0 0 auto;
+      min-height: 48px;
+      padding: 8px 14px;
+      white-space: nowrap;
+    }
 
-    #setup label { font-weight: 600; }
-    #setup button { grid-column: 1 / -1; min-height: 42px; }
+    #voice-controls label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
 
-    #setup select, #setup input {
+    #voice-controls input[type="checkbox"] {
+      flex: 0 0 18px;
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      padding: 0;
+      accent-color: #b6e36a;
+    }
+
+    #stop-recording-button {
+      background: #666;
+    }
+
+    form[hidden] {
+      display: none;
+    }
+
+    #setup label {
+      font-weight: 600;
+    }
+
+    #setup button {
+      grid-column: 1 / -1;
+      min-height: 42px;
+    }
+
+    #setup select,
+    #setup input {
       flex: 1;
       min-width: 0;
       padding: 11px;
-      border: 1px solid #c9cbd1;
+      border: 1px solid #405045;
       border-radius: 9px;
-      background: white;
+      background: #18211c;
+      color: #edf2eb;
       font: inherit;
     }
 
-    #setup input { font-size: 16px; }
+    #setup input {
+      font-size: 16px;
+    }
 
     form {
       display: flex;
       gap: 10px;
       padding: 14px;
-      border-top: 1px solid #e6e6e6;
+      border-top: 1px solid #34443a;
+      background: #19211d;
     }
 
-    input, #move-input {
+    input,
+    #move-input {
       min-width: 0;
       flex: 1;
       padding: 12px;
-      border: 1px solid #c9cbd1;
+      border: 1px solid #405045;
       border-radius: 9px;
+      background: #18211c;
+      color: #edf2eb;
       font: inherit;
       font-size: 16px;
     }
 
-    #move-input { resize: vertical; }
+    #move-input {
+      resize: vertical;
+    }
 
     button {
       padding: 0 18px;
       border: 0;
       border-radius: 9px;
-      background: #464feb;
-      color: white;
+      background: #34452e;
+      color: #edf2eb;
       font: inherit;
       font-weight: 600;
       cursor: pointer;
     }
 
-    button:disabled, input:disabled, select:disabled { opacity: .55; }
+    button:disabled,
+    input:disabled,
+    select:disabled {
+      opacity: .55;
+    }
 
     #go-button {
       margin: 0 14px 14px auto;
       padding: 10px 16px;
-      background: #333;
+      background: #26332b;
     }
 
-    #go-button[hidden] { display: none; }
+    #go-button[hidden] {
+      display: none;
+    }
 
     #help-button {
       margin: 0 0 14px 14px;
       padding: 10px 16px;
-      background: #666;
+      background: #26332b;
     }
 
-    #help-button[hidden] { display: none; }
+    #help-button[hidden] {
+      display: none;
+    }
 
     #copy-pgn-button {
       margin: 0 14px 14px 0;
       padding: 10px 16px;
-      background: #287446;
+      background: #2a603c;
     }
 
-    #copy-pgn-button[hidden], #pgn-fallback[hidden] { display: none; }
+    #copy-pgn-button[hidden],
+    #pgn-fallback[hidden] {
+      display: none;
+    }
 
     #pgn-fallback {
       width: calc(100% - 28px);
       min-height: 120px;
       margin: 0 14px 14px;
       padding: 10px;
-      border: 1px solid #c9cbd1;
+      border: 1px solid #405045;
       border-radius: 8px;
+      background: #151c18;
+      color: #edf2eb;
       font: 13px ui-monospace, monospace;
     }
 
     @media (max-width: 480px) {
-      body { padding: 0; }
-      main { min-height: 100vh; border: 0; border-radius: 0; }
+      body {
+        padding: 0;
+      }
+
+      main {
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+      }
+
+      main:has(#voice-controls:not([hidden])) {
+        padding-bottom: calc(68px + env(safe-area-inset-bottom));
+      }
+
+      #voice-controls:not([hidden]) {
+        position: fixed;
+        z-index: 10;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+        border-top: 1px solid #34443a;
+        background: linear-gradient(145deg, #202a24, #19211d);
+        box-shadow: 0 -8px 24px #0005;
+      }
     }
   </style>
 </head>
+
 <body>
   <main>
     <header>
       <div class="header-row">
         <h1>Maia OTB Chess</h1>
+        <a id="profile-link" href="/profile">Rapid profile</a>
         <button id="new-game-button" type="button" hidden>New Game</button>
       </div>
-      <p>Enter moves in SAN/UCI notation or commands, or speak a move for local interpretation.</p>
+      <p id="rating-display">Rapid rating · {{ player_elo }}</p>
     </header>
     <form id="setup">
       <label for="player-color">Play as</label>
       <select id="player-color" name="color">
+        <option value="random" selected>Random</option>
         <option value="white">White</option>
         <option value="black">Black</option>
       </select>
-      <label for="maia-elo">Maia Elo</label>
-      <input id="maia-elo" name="maia_elo" type="number" min="0" max="5000"
-             step="1" value="800" required>
-      <label for="player-elo">Your Elo</label>
-      <input id="player-elo" name="player_elo" type="number" min="0" max="5000"
-             step="1" value="760" required>
       <button id="start-button" type="submit">Start game</button>
     </form>
     <section id="history" aria-live="polite" aria-label="Move history"></section>
     <div id="status" role="status"></div>
     <form id="move-form" hidden>
       <textarea id="move-input" name="text" rows="2" enterkeyhint="send"
-                placeholder="Move or command (e.g. e4, undo, go)"
-                autocomplete="off" autocapitalize="off" required aria-label="Your move"></textarea>
+        placeholder="Move or command (e.g. e4, undo, go)" autocomplete="off" autocapitalize="off" required
+        aria-label="Your move"></textarea>
       <button id="send-button" type="submit">Send</button>
     </form>
     <div id="voice-controls" hidden>
@@ -252,8 +369,7 @@
     const newGameButton = document.querySelector("#new-game-button");
     const setup = document.querySelector("#setup");
     const colorSelect = document.querySelector("#player-color");
-    const maiaEloInput = document.querySelector("#maia-elo");
-    const playerEloInput = document.querySelector("#player-elo");
+    const ratingDisplay = document.querySelector("#rating-display");
     const startButton = document.querySelector("#start-button");
     const form = document.querySelector("#move-form");
     const input = document.querySelector("#move-input");
@@ -270,6 +386,7 @@
     let waitingForEngine = false;
     let gameEnded = false;
     let canonicalHistory = [];
+    let maiaPollGeneration = 0;
     let voiceBusy = false;
     let recording = false;
     let recorder = null;
@@ -330,25 +447,23 @@
 
     function renderState(data) {
       renderHistory(data.history || []);
-      if (Number.isInteger(data.maia_elo)) maiaEloInput.value = data.maia_elo;
-      if (Number.isInteger(data.player_elo)) playerEloInput.value = data.player_elo;
+      if (Number.isInteger(data.rating)) {
+        ratingDisplay.textContent = `Rapid rating · ${data.rating}`;
+      }
       if (data.started) {
         setup.hidden = true;
         form.hidden = false;
         voiceControls.hidden = false;
         newGameButton.hidden = false;
         colorSelect.value = data.player_color;
-        maiaEloInput.value = data.maia_elo;
-        playerEloInput.value = data.player_elo;
       } else if (data.new_game) {
         setup.hidden = false;
         form.hidden = true;
         voiceControls.hidden = true;
         newGameButton.hidden = true;
+        colorSelect.value = "random";
         startButton.disabled = false;
         colorSelect.disabled = false;
-        maiaEloInput.disabled = false;
-        playerEloInput.disabled = false;
         input.value = "";
         status.textContent = data.saved_pgn
           ? `Previous game saved to ${data.saved_pgn}. Choose a color to start again.`
@@ -359,12 +474,21 @@
       copyPgnButton.hidden = !data.game_over;
       if (data.game_over) {
         status.textContent = `Game over${data.result ? ` (${data.result})` : ""}.`
-          + (data.saved_pgn ? ` PGN saved to ${data.saved_pgn}.` : "");
+          + (data.saved_pgn ? ` PGN saved to ${data.saved_pgn}.` : "")
+          + (Number.isInteger(data.rating_change)
+            ? ` Rating ${data.rating_change > 0 ? "+" : ""}${data.rating_change} (now ${data.rating}).`
+            : "");
       } else if (data.quit) {
         status.textContent = "Game quit.";
       } else if (data.maia_thinking) {
         setWaitingForEngine(true);
         status.textContent = "Maia is thinking; enter go to play now.";
+      } else {
+        if (waitingForEngine) {
+          setWaitingForEngine(false);
+          if (!data.maia_error) status.textContent = "";
+        }
+        if (data.maia_error) status.textContent = data.maia_error;
       }
     }
 
@@ -425,6 +549,36 @@
       return speechPlaybackQueue;
     }
 
+    async function pollForMaiaTurn(afterHistoryLength) {
+      const generation = ++maiaPollGeneration;
+      let observedHistoryLength = afterHistoryLength;
+      while (generation === maiaPollGeneration) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        let data;
+        try {
+          const response = await fetch(
+            `/api/history?after=${observedHistoryLength}`,
+            { cache: "no-store" }
+          );
+          data = await readResponse(response);
+        } catch (error) {
+          status.textContent = `Waiting for Maia; history refresh failed: ${error.message}`;
+          continue;
+        }
+        if (generation !== maiaPollGeneration) return;
+        observedHistoryLength = Math.max(
+          observedHistoryLength,
+          (data.history || []).length
+        );
+        renderState(data);
+        await speakEngineMove(data);
+        if (!data.maia_thinking) {
+          if (!input.disabled) focusMoveInput();
+          return;
+        }
+      }
+    }
+
     function setVoiceBusy(busy) {
       voiceBusy = busy;
       input.disabled = gameEnded || busy;
@@ -446,17 +600,22 @@
       const extension = blob.type.includes("ogg") ? "ogg"
         : blob.type.includes("mp4") ? "m4a" : "webm";
       audio.append("audio", blob, `recording.${extension}`);
+      const historyBefore = canonicalHistory.length;
       setVoiceBusy(true);
       status.textContent = "Transcribing and interpreting locally, then sending the move...";
       try {
         const response = await fetch("/api/voice-command", { method: "POST", body: audio });
         const data = await readResponse(response);
         renderState(data);
-        setWaitingForEngine(false);
-        if (!data.game_over && !data.quit) {
+        if (data.maia_thinking) {
+          status.textContent = `Heard "${data.transcript}" as ${data.interpreted_uci}. Maia is thinking...`;
+          await pollForMaiaTurn(historyBefore);
+        } else if (!data.game_over && !data.quit && !data.maia_error) {
           status.textContent = `Heard "${data.transcript}" as ${data.interpreted_uci}.`;
+          await speakEngineMove(data);
+        } else {
+          await speakEngineMove(data);
         }
-        await speakEngineMove(data);
       } catch (error) {
         status.textContent = error.message;
       } finally {
@@ -542,6 +701,7 @@
       try {
         const response = await fetch("/api/new-game", { method: "POST" });
         const data = await readResponse(response);
+        maiaPollGeneration += 1;
         renderState({ ...data, new_game: true });
         historyElement.removeAttribute("aria-busy");
         gameEnded = false;
@@ -560,8 +720,6 @@
       unlockSpeechPlayback();
       startButton.disabled = true;
       colorSelect.disabled = true;
-      maiaEloInput.disabled = true;
-      playerEloInput.disabled = true;
       status.textContent = colorSelect.value === "black"
         ? "Maia is thinking; enter go to play now."
         : "";
@@ -573,11 +731,7 @@
         const response = await fetch("/api/start", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            color: colorSelect.value,
-            maia_elo: Number(maiaEloInput.value),
-            player_elo: Number(playerEloInput.value)
-          })
+          body: JSON.stringify({ color: colorSelect.value })
         });
         const data = await readResponse(response);
         renderState(data);
@@ -597,8 +751,6 @@
         form.hidden = true;
         startButton.disabled = false;
         colorSelect.disabled = false;
-        maiaEloInput.disabled = false;
-        playerEloInput.disabled = false;
       }
     });
 
@@ -627,18 +779,25 @@
           body: JSON.stringify({ text })
         });
         const data = await readResponse(response);
-        engineMoveReceived = data.messages
-          && data.messages.some((message) => message.role === "Engine");
+        const historyBefore = canonicalHistory.length;
         renderState(data);
-        setWaitingForEngine(false);
-        if (data.action === "help" || data.action === "undo" ||
+        if (data.maia_thinking) {
+          status.textContent = data.action === "undo"
+            ? `${data.message} Maia is thinking...`
+            : "Maia is thinking. Select Go now to skip the delay.";
+          await pollForMaiaTurn(historyBefore);
+        } else {
+          engineMoveReceived = (data.history || []).slice(historyBefore)
+            .some((message) => message.role === "Engine");
+          if (data.action === "help" || data.action === "undo" ||
             data.action === "resign" || data.action === "quit" ||
             data.action === "go") {
-          status.textContent = data.message;
-        } else if (!data.game_over && !data.quit) {
-          status.textContent = "";
+            status.textContent = data.message;
+          } else if (!data.game_over && !data.quit && !data.maia_error) {
+            status.textContent = "";
+          }
+          await speakEngineMove(data);
         }
-        await speakEngineMove(data);
       } catch (error) {
         renderHistory(canonicalHistory);
         try {
@@ -735,8 +894,12 @@
       .then(readResponse)
       .then((data) => {
         renderState(data);
+        if (data.maia_thinking) {
+          pollForMaiaTurn((data.history || []).length);
+        }
       })
       .catch((error) => { status.textContent = error.message; });
   </script>
 </body>
+
 </html>

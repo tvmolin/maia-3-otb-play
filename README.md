@@ -190,6 +190,15 @@ Run the chat API tests to verify the Python setup:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p test_web_app.py
 ```
 
+Build the profile page assets once, and again after frontend changes:
+
+```powershell
+Set-Location .\frontend
+npm ci
+npm run build
+Set-Location ..
+```
+
 Start the web game from the repository root:
 
 ```powershell
@@ -437,9 +446,14 @@ To remove the rule later, run this in an Administrator PowerShell:
 Remove-NetFirewallRule -DisplayName "Maia 3 local web app (TCP 5000)"
 ```
 
-Choose White or Black and enter both Elo ratings when starting. Defaults match
-the terminal prompts (Maia 800, player 760). If you choose Black, Maia makes
-the opening move first. Enter moves in standard algebraic notation (such as
+Choose Random (the default), White, or Black when starting. Your Rapid rating
+begins at 1200 and is updated after each completed game with the Chessground
+ladder's K=40 Elo calculation. Maia is matched within 100 rating points; the
+engine's Maia rating is compensated by 200 points and its temperature is
+selected from 0.5–0.9. Ratings and match history persist in
+`games/otb-ladder-ratings.json`. Open **Rapid profile** for rating progress,
+past games, PGN actions, and Lichess import status. If Random assigns you Black,
+Maia makes the opening move first. Enter moves in standard algebraic notation (such as
 `e4`) or UCI notation (such as `e2e4`). The web interface also accepts the
 terminal commands `help`, `undo`, `resign`/`concede`, `q`/`quit`/`exit`, and
 `go` (during Maia's think delay). Help and Go controls remain available while
@@ -456,7 +470,7 @@ Use **New Game** to discard an unfinished game and choose a side again without
 restarting the server or reloading the engine. Start a new game after Maia has
 finished her current turn (or use `go` to skip the remaining think delay).
 
-The HTTP API supports `POST /api/start` with `{"color":"white","maia_elo":800,"player_elo":760}` (use `"black"` to play Black), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. `POST /api/new-game` saves a completed game (if not already saved), discards an unfinished one, and returns to side/rating selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
+The HTTP API supports `POST /api/start` with `{"color":"random"}` (the default; `"white"` and `"black"` are also supported), `GET /api/history`, and `POST /api/command` with `{"text":"e4"}` or a terminal command such as `{"text":"undo"}`. An accepted player move is returned in canonical notation immediately; Maia's reply is added to history asynchronously. Poll `GET /api/history` while `maia_thinking` is true to receive the reply. Ratings are assigned by the ladder and cannot be supplied by the client. `POST /api/new-game` saves a completed game (if not already saved), discards an unfinished one, and returns to side selection. The `POST /api/move` route remains available and accepts either `{"move":"e4"}` or a command string.
 
 ## Play Maia on a Chessground Board
 
@@ -574,7 +588,7 @@ token, importing is disabled. Install the project dependencies again after
 updating the project to add `.env` support.
 
 The Chessground, local web, and terminal interfaces save completed games locally
-first and then import them in the background. Chessground's Profile updates
+first and then import them in the background. Their Profiles update
 automatically to show the Lichess analysis link when an import finishes.
 Imported games appear in your Lichess imported-games
 collection. Unfinished games are not imported.

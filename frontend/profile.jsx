@@ -104,7 +104,7 @@ function Profile() {
       setDeleting(null);
     }
   };
-  const categoryName = data.category[0].toUpperCase() + data.category.slice(1);
+  const categoryName = data.ratingLabel || data.category[0].toUpperCase() + data.category.slice(1);
   const matchRows = matches.length ? matches.map((match) => (
     <tr key={`${match.finished_at}-${match.pgn_file}`}>
       <td><time dateTime={match.finished_at}>{new Date(match.finished_at).toLocaleString()}</time></td>
@@ -171,14 +171,16 @@ function Profile() {
     <MantineProvider defaultColorScheme="dark" theme={{ primaryColor: 'lime', fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif' }}>
       <main>
         <header className="page-header">
-          <Title order={1}>Player profile</Title>
+          <Title order={1}>{data.singleCategory ? `${categoryName} profile` : 'Player profile'}</Title>
           <Anchor className="header-link" href="/"><IconArrowLeft size={16} /> Back to game</Anchor>
         </header>
         <div className="profile-layout">
-          <nav className="profile-tabs" aria-label="Rating category">
-            <Anchor href="/profile?category=blitz" aria-current={data.category === 'blitz' ? 'page' : undefined}>Blitz</Anchor>
-            <Anchor href="/profile?category=rapid" aria-current={data.category === 'rapid' ? 'page' : undefined}>Rapid</Anchor>
-          </nav>
+          {!data.singleCategory && (
+            <nav className="profile-tabs" aria-label="Rating category">
+              <Anchor href="/profile?category=blitz" aria-current={data.category === 'blitz' ? 'page' : undefined}>Blitz</Anchor>
+              <Anchor href="/profile?category=rapid" aria-current={data.category === 'rapid' ? 'page' : undefined}>Rapid</Anchor>
+            </nav>
+          )}
           <Paper className="panel" component="section" aria-labelledby="rating-title">
             <Title order={2} id="rating-title">{categoryName} rating progress</Title>
             <div className="profile-summary"><span>{categoryName} rating</span><strong>{data.playerElo}</strong></div>
@@ -198,7 +200,7 @@ function Profile() {
             </svg>
           </Paper>
           <Paper className="panel" component="section" aria-labelledby="history-title">
-            <Title order={2} id="history-title">{categoryName} match history</Title>
+            <Title order={2} id="history-title">{categoryName} game history</Title>
             <h3 id="color-stats-title">Results by piece color</h3>
             <div className="profile-table-wrap">
               <Table className="profile-table color-stats" aria-labelledby="color-stats-title">

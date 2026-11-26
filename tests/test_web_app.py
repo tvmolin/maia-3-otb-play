@@ -1,6 +1,7 @@
 import json
 from io import BytesIO
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from threading import Event, Thread
@@ -57,25 +58,53 @@ class FakeWhisper:
 
 class WebAppTests(unittest.TestCase):
     def setUp(self):
-        self.app = create_app(FakeEngine()).test_client()
+        self.storage = tempfile.TemporaryDirectory()
+        self.addCleanup(self.storage.cleanup)
+        self.player_data_path = Path(self.storage.name) / "ladder.json"
+        self.app = create_app(
+            FakeEngine(),
+            player_data_path=self.player_data_path,
+        ).test_client()
         self.app.post("/api/start", json={"color": "white"})
 
-    def test_move_returns_and_records_both_moves(self):
-        with patch.object(GameSession, "wait_for_maia_think") as wait:
-            response = self.app.post("/api/move", json={"move": "e4"})
+    def wait_for_maia(self, client=None, timeout=3):
+        client = client or self.app
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            response = client.get("/api/history")
+            self.assertEqual(response.status_code, 200)
+            if not response.json["maia_thinking"]:
+                return response.json
+            Event().wait(0.01)
+        self.fail("Maia did not finish within the test timeout.")
 
-        self.assertEqual(response.status_code, 200)
+    def test_move_is_returned_before_maias_reply(self):
+        waiting = Event()
+        continue_thinking = Event()
+
+        def pause_think(_session, _seconds):
+            waiting.set()
+            continue_thinking.wait(2)
+
+        with patch.object(GameSession, "wait_for_maia_think", pause_think):
+            response = self.app.post("/api/move", json={"move": "e4"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["messages"], [{"role": "You", "text": "e4"}])
+            self.assertEqual(response.json["history"], response.json["messages"])
+            self.assertTrue(response.json["maia_thinking"])
+            self.assertTrue(waiting.wait(2))
+            continue_thinking.set()
+
+        state = self.wait_for_maia()
         self.assertEqual(
-            response.json["messages"],
+            state["history"],
             [
                 {"role": "You", "text": "e4"},
                 {"role": "Engine", "text": "e5"},
             ],
         )
-        self.assertEqual(response.json["history"], response.json["messages"])
-        self.assertEqual(response.json["speech_text"], "pawn to e five.")
-        wait.assert_called_once()
-        self.assertAlmostEqual(wait.call_args.args[0], 3.0, delta=0.1)
+        history = self.app.get("/api/history?after=1")
+        self.assertEqual(history.json["speech_text"], "pawn to e five.")
 
     def test_spoken_move_describes_castling_and_checkmate(self):
         castle_board = chess.Board("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")
@@ -138,6 +167,7 @@ class WebAppTests(unittest.TestCase):
     def test_move_accepts_uci_notation(self):
         with patch.object(GameSession, "wait_for_maia_think"):
             response = self.app.post("/api/move", json={"move": "e2e4"})
+            self.wait_for_maia()
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["messages"][0]["text"], "e4")
@@ -156,11 +186,13 @@ class WebAppTests(unittest.TestCase):
 
         with patch.object(GameSession, "wait_for_maia_think"):
             response = client.post("/api/move", json={"move": "e4"})
+            state = self.wait_for_maia(client)
 
-        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.status_code, 200)
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(len(game.board.move_stack), 0)
         self.assertEqual(game.history, [])
+        self.assertIn("your move was undone", state["maia_error"])
 
     def test_shared_undo_removes_moves_from_board_and_history(self):
         session = GameSession(FakeEngine())
@@ -235,20 +267,16 @@ class WebAppTests(unittest.TestCase):
                 },
                 content_type="multipart/form-data",
             )
+            state = self.wait_for_maia(client)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["transcript"], "knight f3")
         self.assertEqual(response.json["interpreted_uci"], "g1f3")
-        self.assertEqual(response.json["speech_text"], "pawn to e five.")
-        self.assertEqual(
-            response.json["messages"],
-            [
-                {"role": "You", "text": "Nf3"},
-                {"role": "Engine", "text": "e5"},
-            ],
-        )
+        self.assertEqual(response.json["messages"], [{"role": "You", "text": "Nf3"}])
         interpret.assert_called_once()
         self.assertEqual(interpret.call_args.args[0], "knight f3")
+        self.assertEqual(state["history"][-1], {"role": "Engine", "text": "e5"})
+        self.assertEqual(client.get("/api/history?after=1").json["speech_text"], "pawn to e five.")
         wait.assert_called_once()
 
     def test_voice_command_rejects_ambiguous_or_illegal_interpretations(self):
@@ -371,38 +399,63 @@ class WebAppTests(unittest.TestCase):
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(game.board.turn, chess.BLACK)
 
+    def test_random_color_can_choose_black_and_maia_makes_opening_move(self):
+        client = create_app(
+            FakeEngine(move="e4"),
+            player_data_path=self.player_data_path,
+        ).test_client()
+
+        with patch("web_app.random.choice", return_value=chess.BLACK), patch.object(
+            GameSession, "wait_for_maia_think"
+        ):
+            response = client.post("/api/start", json={})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["player_color"], "black")
+        self.assertEqual(response.json["history"], [{"role": "Engine", "text": "e4"}])
+
     def test_black_undo_replays_maias_opening_move(self):
         client = create_app(FakeEngine(move="e4")).test_client()
 
         with patch.object(GameSession, "wait_for_maia_think"):
             client.post("/api/start", json={"color": "black"})
             response = client.post("/api/command", json={"text": "undo"})
+            state = self.wait_for_maia(client)
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["action"], "undo")
-        self.assertEqual(response.json["history"], [{"role": "Engine", "text": "e4"}])
-        self.assertEqual(response.json["speech_text"], "pawn to e four.")
+        self.assertEqual(state["history"], [{"role": "Engine", "text": "e4"}])
+        self.assertEqual(client.get("/api/history?after=0").json["speech_text"], "pawn to e four.")
         game = client.application.config["CHESS_GAME"]
         self.assertEqual(game.board.turn, chess.BLACK)
 
-    def test_web_can_set_elos_and_configure_engine(self):
+    def test_ladder_assigns_player_and_compensated_maia_ratings(self):
         engine = FakeEngine()
-        client = create_app(engine).test_client()
+        client = create_app(
+            engine,
+            player_data_path=self.player_data_path,
+        ).test_client()
 
-        response = client.post(
-            "/api/start",
-            json={"color": "white", "maia_elo": 1500, "player_elo": 1300},
-        )
+        with patch("web_app.random.randint", return_value=1250) as rating_picker, patch(
+            "web_app.random.uniform", return_value=0.6
+        ):
+            response = client.post("/api/start", json={"color": "white"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json["maia_elo"], 1500)
-        self.assertEqual(response.json["player_elo"], 1300)
+        self.assertEqual(response.json["maia_elo"], 1250)
+        self.assertEqual(response.json["player_elo"], 1200)
+        self.assertEqual(response.json["rating"], 1200)
         self.assertEqual(
-            engine.configured[-1], {"SelfElo": 1500, "OppoElo": 1300}
+            engine.configured[-1],
+            {"SelfElo": 1050, "OppoElo": 1200, "Temperature": "0.6"},
         )
+        rating_picker.assert_called_once_with(1100, 1300)
 
-    def test_invalid_elo_is_rejected(self):
-        client = create_app(FakeEngine()).test_client()
+    def test_client_cannot_override_ladder_ratings(self):
+        client = create_app(
+            FakeEngine(),
+            player_data_path=self.player_data_path,
+        ).test_client()
 
         response = client.post(
             "/api/start",
@@ -410,7 +463,60 @@ class WebAppTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+        self.assertIn("assigned by the ladder", response.json["error"])
         self.assertFalse(client.application.config["CHESS_GAME"].started)
+
+    def test_profile_import_and_delete_use_the_saved_game_and_recalculate_rating(self):
+        class FakeImporter:
+            def __init__(self):
+                self.enqueued = None
+
+            def enqueue(self, path, retry=False, fallback_pgn=None):
+                self.enqueued = (path, retry, fallback_pgn)
+                return True
+
+            def remove_local_game_files(self, path):
+                path.unlink(missing_ok=True)
+                path.with_suffix(".pgn.lichess.json").unlink(missing_ok=True)
+
+        importer = FakeImporter()
+        client = create_app(
+            FakeEngine(),
+            lichess_importer=importer,
+            player_data_path=self.player_data_path,
+        ).test_client()
+        pgn_path = self.player_data_path.parent / "saved-game.pgn"
+        pgn = '[Event "OTB Maia game"]\n[Result "1-0"]\n\n1. e4 1-0\n'
+        pgn_path.write_text(pgn, encoding="utf-8")
+        ladder = client.application.config["OTB_LADDER"]
+        ladder.record_match({
+            "match_id": "match-1",
+            "rating_category": "rapid",
+            "result": "1-0",
+            "player_color": "white",
+            "maia_elo": 1200,
+            "opponent_name": "Maia",
+            "time_control": "OTB",
+            "pgn_file": pgn_path.name,
+            "pgn": pgn,
+        })
+
+        profile = client.get("/profile")
+        self.assertEqual(profile.status_code, 200)
+        self.assertIn(b'"singleCategory": true', profile.data)
+        self.assertIn(b'"ratingLabel": "Rapid"', profile.data)
+        self.assertIn(b"saved-game.pgn", profile.data)
+
+        imported = client.post("/api/lichess/import/match-1")
+        self.assertEqual(imported.status_code, 200)
+        self.assertEqual(imported.json["status"], "pending")
+        self.assertEqual(importer.enqueued, (pgn_path, True, pgn))
+
+        deleted = client.delete("/api/matches/rapid/match-1")
+        self.assertEqual(deleted.status_code, 200)
+        self.assertEqual(deleted.json["rating"], 1200)
+        self.assertFalse(pgn_path.exists())
+        self.assertEqual(ladder.matches_for("rapid"), [])
 
     def test_shared_commands_work_over_http(self):
         help_response = self.app.post("/api/command", json={"text": "help"})
@@ -419,6 +525,7 @@ class WebAppTests(unittest.TestCase):
 
         with patch.object(GameSession, "wait_for_maia_think"):
             self.app.post("/api/command", json={"text": "e4"})
+            self.wait_for_maia()
         undo_response = self.app.post("/api/command", json={"text": "undo"})
 
         self.assertEqual(undo_response.json["action"], "undo")
@@ -436,7 +543,10 @@ class WebAppTests(unittest.TestCase):
         game.finish_maia_think()
 
     def test_resign_alias_and_quit_commands_work_over_http(self):
-        resign_client = create_app(FakeEngine(move="e4")).test_client()
+        resign_client = create_app(
+            FakeEngine(move="e4"),
+            player_data_path=self.player_data_path,
+        ).test_client()
         with patch.object(GameSession, "wait_for_maia_think"):
             resign_client.post("/api/start", json={"color": "black"})
         in_progress = resign_client.get("/api/pgn")
@@ -471,6 +581,7 @@ class WebAppTests(unittest.TestCase):
     def test_new_game_discards_unfinished_game_and_resets_to_color_picker(self):
         with patch.object(GameSession, "wait_for_maia_think"):
             self.app.post("/api/command", json={"text": "e4"})
+            self.wait_for_maia()
 
         with patch("maia_game.save_pgn", return_value=Path("maia-game-test.pgn")) as save_pgn:
             response = self.app.post("/api/new-game")
@@ -492,23 +603,40 @@ class WebAppTests(unittest.TestCase):
 
     def test_completed_game_is_saved_immediately_and_only_once(self):
         client = create_app(
-            FakeEngine(moves=["e5", "Qh4#"])
+            FakeEngine(moves=["e5", "Qh4#"]),
+            player_data_path=self.player_data_path,
         ).test_client()
-        client.post("/api/start", json={"color": "white"})
+        with patch("web_app.random.randint", return_value=1200), patch(
+            "web_app.random.uniform", return_value=0.8
+        ):
+            client.post("/api/start", json={"color": "white"})
 
-        with patch.object(GameSession, "wait_for_maia_think"), patch(
+        with patch("web_app.random.randint", return_value=1200), patch(
+            "web_app.random.uniform", return_value=0.8
+        ), patch.object(GameSession, "wait_for_maia_think"), patch(
             "maia_game.save_pgn", return_value=Path("completed-game.pgn")
         ) as save_pgn:
             client.post("/api/command", json={"text": "f3"})
+            self.wait_for_maia(client)
             response = client.post("/api/command", json={"text": "g4"})
+            state = self.wait_for_maia(client)
 
             self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json["result"], "0-1")
-            self.assertEqual(response.json["saved_pgn"], "completed-game.pgn")
+            self.assertEqual(state["result"], "0-1")
+            self.assertEqual(state["saved_pgn"], "completed-game.pgn")
+            self.assertEqual(state["rating_change"], -20)
+            self.assertEqual(state["rating"], 1180)
             save_pgn.assert_called_once()
 
             saved_pgn = save_pgn.call_args.args[0]
             self.assertIn('[Result "0-1"]', saved_pgn)
+            ladder = client.application.config["OTB_LADDER"]
+            self.assertEqual(len(ladder.matches_for("rapid")), 1)
+            self.assertEqual(ladder.rating_for("rapid"), 1180)
+            profile = client.get("/profile")
+            self.assertEqual(profile.status_code, 200)
+            self.assertIn(b"Rapid profile", profile.data)
+            self.assertIn(b"completed-game.pgn", profile.data)
             new_game_response = client.post("/api/new-game")
 
         self.assertEqual(new_game_response.status_code, 200)
@@ -538,10 +666,12 @@ class WebAppTests(unittest.TestCase):
             response = client.post("/api/new-game")
             client.post("/api/command", json={"text": "go"})
             worker.join(2)
+            state = self.wait_for_maia(client)
 
         self.assertEqual(response.status_code, 409)
         self.assertFalse(worker.is_alive())
         self.assertEqual(move_response["response"].status_code, 200)
+        self.assertEqual(state["history"][-1], {"role": "Engine", "text": "e5"})
 
     def test_go_command_interrupts_web_think_delay(self):
         client = create_app(FakeEngine()).test_client()
@@ -566,10 +696,12 @@ class WebAppTests(unittest.TestCase):
             self.assertTrue(waiting.wait(2))
             go_response = client.post("/api/command", json={"text": "go"})
             worker.join(2)
+            state = self.wait_for_maia(client)
 
         self.assertFalse(worker.is_alive())
         self.assertEqual(go_response.json["action"], "go")
-        self.assertEqual(move_response["response"].json["history"][-1]["text"], "e5")
+        self.assertEqual(move_response["response"].json["history"], [{"role": "You", "text": "e4"}])
+        self.assertEqual(state["history"][-1]["text"], "e5")
 
     def test_homepage_and_empty_history_load(self):
         page = self.app.get("/")
@@ -577,6 +709,14 @@ class WebAppTests(unittest.TestCase):
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Maia OTB Chess", page.data)
+        self.assertIn(b'id="profile-link"', page.data)
+        self.assertIn(b"Rapid rating", page.data)
+        self.assertIn(b'<option value="random" selected>Random</option>', page.data)
+        self.assertIn(b"radial-gradient(ellipse at 18% 0%", page.data)
+        self.assertIn(b"#setup[hidden] { display: none; }", page.data)
+        self.assertIn(b"#voice-controls:not([hidden])", page.data)
+        self.assertIn(b"position: fixed;", page.data)
+        self.assertIn(b"white-space: nowrap;", page.data)
         self.assertIn(b'id="go-button"', page.data)
         self.assertIn(b'input.disabled = gameEnded', page.data)
         self.assertIn(b'button.disabled = waiting || gameEnded', page.data)
@@ -584,8 +724,8 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'goButton.hidden = !waiting || gameEnded', page.data)
         self.assertIn(b'setWaitingForEngine(true);', page.data)
         self.assertIn(b'id="help-button"', page.data)
-        self.assertIn(b'id="maia-elo"', page.data)
-        self.assertIn(b'id="player-elo"', page.data)
+        self.assertNotIn(b'id="maia-elo"', page.data)
+        self.assertNotIn(b'id="player-elo"', page.data)
         self.assertIn(b'id="copy-pgn-button"', page.data)
         self.assertIn(b'id="pgn-fallback"', page.data)
         self.assertIn(b'id="record-button"', page.data)

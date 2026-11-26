@@ -32,7 +32,7 @@
 
     main {
       width: min(100%, 560px);
-      min-height: min(760px, calc(100vh - 40px));
+      height: min(760px, calc(100vh - 40px));
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -85,10 +85,12 @@
 
     #history {
       flex: 1;
+      min-height: 0;
       display: flex;
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
+      overscroll-behavior-y: contain;
       padding: 18px;
     }
 
@@ -300,10 +302,14 @@
     @media (max-width: 480px) {
       body {
         padding: 0;
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
       }
 
       main {
-        min-height: 100vh;
+        height: 100vh;
+        height: 100dvh;
         border: 0;
         border-radius: 0;
       }
@@ -395,39 +401,68 @@
     let speechAudioContext = null;
     let speechPlaybackQueue = Promise.resolve();
 
+    function isHistoryNearBottom() {
+      return historyElement.scrollHeight - historyElement.clientHeight
+        - historyElement.scrollTop <= 48;
+    }
+
     function scrollHistoryToBottom() {
       requestAnimationFrame(() => {
         historyElement.scrollTop = historyElement.scrollHeight;
-        historyElement.lastElementChild?.scrollIntoView({ block: "end" });
       });
     }
 
+    function createMessageElement(message) {
+      const bubble = document.createElement("article");
+      bubble.className = `message ${message.role}`;
+      const role = document.createElement("span");
+      role.className = "role";
+      role.textContent = message.role;
+      const text = document.createElement("span");
+      text.textContent = message.text;
+      bubble.append(role, text);
+      return bubble;
+    }
+
     function renderHistory(messages) {
-      canonicalHistory = messages;
-      historyElement.replaceChildren();
-      for (const message of messages) {
-        const bubble = document.createElement("article");
-        bubble.className = `message ${message.role}`;
-        const role = document.createElement("span");
-        role.className = "role";
-        role.textContent = message.role;
-        const text = document.createElement("span");
-        text.textContent = message.text;
-        bubble.append(role, text);
-        historyElement.append(bubble);
+      const followNewMessages = isHistoryNearBottom();
+      const previousScrollTop = historyElement.scrollTop;
+      historyElement.querySelector("[data-optimistic]")?.remove();
+
+      let commonPrefixLength = 0;
+      while (
+        commonPrefixLength < canonicalHistory.length
+        && commonPrefixLength < messages.length
+        && canonicalHistory[commonPrefixLength].role === messages[commonPrefixLength].role
+        && canonicalHistory[commonPrefixLength].text === messages[commonPrefixLength].text
+      ) {
+        commonPrefixLength += 1;
       }
-      scrollHistoryToBottom();
+
+      if (commonPrefixLength < canonicalHistory.length) {
+        historyElement.replaceChildren();
+        for (const message of messages) {
+          historyElement.append(createMessageElement(message));
+        }
+        if (!followNewMessages) {
+          requestAnimationFrame(() => {
+            historyElement.scrollTop = previousScrollTop;
+          });
+        }
+      } else {
+        for (const message of messages.slice(commonPrefixLength)) {
+          historyElement.append(createMessageElement(message));
+        }
+      }
+      canonicalHistory = messages;
+      if (followNewMessages && messages.length > commonPrefixLength) {
+        scrollHistoryToBottom();
+      }
     }
 
     function appendMessage(roleName, messageText) {
-      const bubble = document.createElement("article");
-      bubble.className = `message ${roleName}`;
-      const role = document.createElement("span");
-      role.className = "role";
-      role.textContent = roleName;
-      const text = document.createElement("span");
-      text.textContent = messageText;
-      bubble.append(role, text);
+      const bubble = createMessageElement({ role: roleName, text: messageText });
+      bubble.dataset.optimistic = "true";
       historyElement.append(bubble);
       scrollHistoryToBottom();
     }

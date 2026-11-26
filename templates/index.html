@@ -90,6 +90,7 @@
       flex-direction: column;
       gap: 12px;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
       padding: 18px;
     }
@@ -601,10 +602,15 @@
           continue;
         }
         if (generation !== maiaPollGeneration) return;
-        observedHistoryLength = Math.max(
-          observedHistoryLength,
-          (data.history || []).length
-        );
+        const newMessages = (data.history || []).slice(observedHistoryLength);
+        const speechPending = newMessages.some((message) => message.role === "Engine")
+          && typeof data.speech_text !== "string";
+        if (!speechPending) {
+          observedHistoryLength = Math.max(
+            observedHistoryLength,
+            (data.history || []).length
+          );
+        }
         renderState(data);
         await speakEngineMove(data);
         if (!data.maia_thinking) {
@@ -847,7 +853,7 @@
       if (engineMoveReceived) {
         focusMoveInput();
       } else if (!input.disabled) {
-        input.focus();
+        focusMoveInput();
       }
     });
 

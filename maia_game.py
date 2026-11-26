@@ -362,6 +362,10 @@ class GameSession:
         with self.lock:
             if not self.started:
                 raise ValueError("Choose a color and start the game first.")
+            if self.is_game_over:
+                raise ValueError("This game is over.")
+            if self.quit_requested:
+                raise ValueError("This game has been quit.")
             if normalized in ("q", "quit", "exit"):
                 self.quit_requested = True
                 return {"action": "quit", "message": "Game quit."}

@@ -648,6 +648,11 @@ class WebAppTests(unittest.TestCase):
             ladder = client.application.config["OTB_LADDER"]
             self.assertEqual(len(ladder.matches_for("rapid")), 1)
             self.assertEqual(ladder.rating_for("rapid"), 1180)
+            undo_response = client.post("/api/command", json={"text": "undo"})
+            self.assertEqual(undo_response.status_code, 400)
+            completed_state = client.get("/api/history").json
+            self.assertEqual(completed_state["history"], state["history"])
+            self.assertTrue(completed_state["game_over"])
             profile = client.get("/profile")
             self.assertEqual(profile.status_code, 200)
             self.assertIn(b"Rapid profile", profile.data)
@@ -728,7 +733,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b"Rapid rating", page.data)
         self.assertIn(b'<option value="random" selected>Random</option>', page.data)
         self.assertIn(b"radial-gradient(ellipse at 18% 0%", page.data)
-        self.assertIn(b"#setup[hidden] { display: none; }", page.data)
+        self.assertRegex(
+            page.get_data(as_text=True),
+            r"#setup\[hidden\]\s*\{\s*display:\s*none;\s*\}",
+        )
         self.assertIn(b"#voice-controls:not([hidden])", page.data)
         self.assertIn(b"position: fixed;", page.data)
         self.assertIn(b"white-space: nowrap;", page.data)
@@ -753,7 +761,10 @@ class WebAppTests(unittest.TestCase):
         self.assertIn(b'function focusMoveInput()', page.data)
         self.assertIn(b'input.focus({ preventScroll: true })', page.data)
         self.assertIn(b'function scrollHistoryToBottom()', page.data)
-        self.assertIn(b'historyElement.lastElementChild?.scrollIntoView({ block: "end" })', page.data)
+        self.assertIn(b'function isHistoryNearBottom()', page.data)
+        self.assertIn(b"min-height: 0;", page.data)
+        self.assertIn(b"overscroll-behavior-y: contain;", page.data)
+        self.assertNotIn(b"lastElementChild?.scrollIntoView", page.data)
         self.assertIn(b'button.addEventListener("pointerdown"', page.data)
         self.assertIn(b'event.preventDefault();', page.data)
         self.assertIn(b'input.disabled = gameEnded', page.data)

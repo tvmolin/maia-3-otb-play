@@ -172,6 +172,21 @@ class WebAppTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["messages"][0]["text"], "e4")
 
+    def test_move_accepts_typed_san_knight_notation(self):
+        with patch.object(GameSession, "wait_for_maia_think"):
+            response = self.app.post("/api/command", json={"text": "Nf3"})
+            self.wait_for_maia()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["messages"], [{"role": "You", "text": "Nf3"}])
+
+    def test_invalid_san_reports_san_error_instead_of_uci_error(self):
+        response = self.app.post("/api/move", json={"move": "Nf4"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("illegal san", response.json["error"])
+        self.assertNotIn("uci string", response.json["error"])
+
     def test_illegal_move_does_not_change_position_or_history(self):
         response = self.app.post("/api/move", json={"move": "not a move"})
 

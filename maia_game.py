@@ -409,8 +409,11 @@ class GameSession:
 
             try:
                 move = self.board.parse_san(text)
-            except ValueError:
-                move = self.board.parse_uci(text)
+            except ValueError as san_error:
+                try:
+                    move = self.board.parse_uci(text)
+                except ValueError:
+                    raise san_error from None
 
             san = self.board.san(move)
             self.board.push(move)
